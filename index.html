@@ -8,11 +8,13 @@
         body { font-family: sans-serif; padding: 10px; background: #f0f2f5; }
         .header { display: flex; justify-content: space-between; align-items: center; font-weight: bold; margin-bottom: 10px; }
         .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; margin: 10px 0; }
-        .cell { background: #fff; padding: 5px; text-align: center; border: 1px solid #ddd; font-size: 0.7em; cursor: pointer; height: 45px; position: relative;}
+        .cell { background: #fff; padding: 5px; text-align: center; border: 1px solid #ddd; font-size: 0.7em; cursor: pointer; height: 45px; }
         .cell-fixed { background: #fff0f0; border-color: #ffcdd2; }
         .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 10px; }
         button { padding: 8px; border-radius: 4px; border: none; background: #2196f3; color: white; cursor: pointer; }
         .info-box { background: #fff; padding: 10px; border-radius: 8px; margin-bottom: 10px; font-size: 0.9em; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: center; }
         .chart-wrapper { height: 250px; width: 100%; background: #fff; padding: 10px; margin-top: 10px; border-radius: 8px; }
     </style>
 </head>
@@ -26,10 +28,15 @@
     
     <div class="info-box">
         <div>総資産目標: <input type="number" id="targetGoal" onchange="saveAll()" style="width:70px">円</div>
-        <div id="totalStatus" style="font-weight:bold; margin-top:5px"></div>
         <hr style="margin: 10px 0;">
-        <div>今月の予算設定: <input type="number" id="monthlyBudget" onchange="saveAll()" style="width:70px">円</div>
-        <div id="monthStatus" style="font-weight:bold; margin-top:5px; color:#d32f2f"></div>
+        <strong>月間収支管理</strong>
+        <table>
+            <tr><th>項目</th><th>金額</th></tr>
+            <tr><td>月間収入</td><td><input type="number" id="monthlyIncome" style="width:80px"></td></tr>
+            <tr><td>固定支出</td><td><input type="number" id="monthlyFixed" style="width:80px"></td></tr>
+            <tr><td>収支残</td><td id="balanceDisplay">0</td></tr>
+        </table>
+        <button onclick="saveMonthlyData()" style="width:100%; margin-top:10px; background:#4caf50">収支表を保存</button>
     </div>
 
     <div class="controls" style="grid-template-columns: 1fr 1fr auto;">
@@ -49,13 +56,12 @@
         let cur = new Date();
         let savings = JSON.parse(localStorage.getItem('mySavings')) || {};
         let fixedExpenses = JSON.parse(localStorage.getItem('myFixedExpenses')) || {};
-        let config = JSON.parse(localStorage.getItem('myConfig')) || { targetGoal: 1000000, monthlyBudget: 100000 };
+        let monthlyPlans = JSON.parse(localStorage.getItem('myMonthlyPlans')) || {};
+        let config = JSON.parse(localStorage.getItem('myConfig')) || { targetGoal: 1000000 };
         document.getElementById('targetGoal').value = config.targetGoal;
-        document.getElementById('monthlyBudget').value = config.monthlyBudget;
         let selectedDate = new Date().toISOString().split('T')[0];
 
         function changeMonth(n) {
-            // 1日にリセットしてから月を変更する（バグ対策）
             cur.setDate(1);
             cur.setMonth(cur.getMonth() + n);
             render();
@@ -63,70 +69,44 @@
 
         function render() {
             const y = cur.getFullYear(), m = cur.getMonth();
+            const monthKey = `${y}-${(m+1).toString().padStart(2,'0')}`;
             document.getElementById('currentMonth').innerText = `${y}年 ${m + 1}月`;
             const cal = document.getElementById('calendar'); cal.innerHTML = '';
             
-            let total = 0;
-            [savings, fixedExpenses].forEach(obj => {
-                Object.values(obj).forEach(v => { const n = parseInt(v); if (!isNaN(n)) total += n; });
-            });
-            const goal = parseInt(config.targetGoal) || 1;
-            document.getElementById('totalStatus').innerText = `総資産: ${total}円 (目標達成率: ${((total/goal)*100).toFixed(1)}%)`;
-
-            let monthSpent = 0;
-            const prefix = `${y}-${(m+1).toString().padStart(2,'0')}`;
-            Object.keys(savings).forEach(d => {
-                if(d.startsWith(prefix)) {
-                    const n = parseInt(savings[d]);
-                    if(!isNaN(n) && n < 0) monthSpent += Math.abs(n); 
-                }
-            });
-            const budget = parseInt(config.monthlyBudget) || 0;
-            const diff = budget - monthSpent;
-            document.getElementById('monthStatus').innerText = `今月の支出(固定費除く): ${monthSpent}円 / 残り予算: ${diff}円`;
+            // 収支表の表示
+            const plan = monthlyPlans[monthKey] || { income: 0, fixed: 0 };
+            document.getElementById('monthlyIncome').value = plan.income;
+            document.getElementById('monthlyFixed').value = plan.fixed;
+            document.getElementById('balanceDisplay').innerText = (plan.income - plan.fixed);
 
             const days = new Date(y, m + 1, 0).getDate();
             for(let i=1; i<=days; i++){
                 const d = `${y}-${(m+1).toString().padStart(2,'0')}-${i.toString().padStart(2,'0')}`;
                 const val = savings[d] !== undefined ? savings[d] : (fixedExpenses[d] !== undefined ? fixedExpenses[d] : '');
                 const isFixed = fixedExpenses[d] !== undefined;
-                
                 const div = document.createElement('div');
                 div.className = 'cell ' + (isFixed ? 'cell-fixed' : '');
                 div.style.backgroundColor = (d === selectedDate) ? '#e3f2fd' : '';
                 div.innerHTML = `${i}<br><span style="color:${parseInt(val)>=0?'blue':'red'}">${val}</span>`;
-                div.onclick = () => { 
-                    selectedDate = d; 
-                    document.getElementById('amountInput').value = val || '';
-                    document.getElementById('isFixed').checked = isFixed;
-                    render();
-                };
+                div.onclick = () => { selectedDate = d; document.getElementById('amountInput').value = val || ''; document.getElementById('isFixed').checked = isFixed; render(); };
                 cal.appendChild(div);
             }
             updateChart();
         }
 
-        let myChart;
-        function updateChart() {
-            const allDates = [...new Set([...Object.keys(savings), ...Object.keys(fixedExpenses)])].sort();
-            let runningTotal = 0;
-            const data = allDates.map(d => {
-                const val = (parseInt(savings[d]) || 0) + (parseInt(fixedExpenses[d]) || 0);
-                runningTotal += val;
-                return runningTotal;
-            });
-            const ctx = document.getElementById('myChart').getContext('2d');
-            if(myChart) myChart.destroy();
-            myChart = new Chart(ctx, { 
-                type: 'line', 
-                data: { labels: allDates, datasets: [{ label: '総資産推移', data, borderColor: '#2196f3', fill: true }] },
-                options: { maintainAspectRatio: false }
-            });
+        function saveMonthlyData() {
+            const y = cur.getFullYear(), m = cur.getMonth();
+            const monthKey = `${y}-${(m+1).toString().padStart(2,'0')}`;
+            monthlyPlans[monthKey] = {
+                income: parseInt(document.getElementById('monthlyIncome').value) || 0,
+                fixed: parseInt(document.getElementById('monthlyFixed').value) || 0
+            };
+            localStorage.setItem('myMonthlyPlans', JSON.stringify(monthlyPlans));
+            render();
         }
 
         function saveAll() {
             config.targetGoal = document.getElementById('targetGoal').value;
-            config.monthlyBudget = document.getElementById('monthlyBudget').value;
             localStorage.setItem('myConfig', JSON.stringify(config));
             render();
         }
@@ -134,20 +114,27 @@
         function saveData() {
             const val = document.getElementById('amountInput').value;
             const isFixed = document.getElementById('isFixed').checked;
-            if(isFixed) {
-                fixedExpenses[selectedDate] = val;
-                delete savings[selectedDate];
-            } else {
-                savings[selectedDate] = val;
-                delete fixedExpenses[selectedDate];
-            }
+            if(isFixed) { fixedExpenses[selectedDate] = val; delete savings[selectedDate]; }
+            else { savings[selectedDate] = val; delete fixedExpenses[selectedDate]; }
             localStorage.setItem('mySavings', JSON.stringify(savings));
             localStorage.setItem('myFixedExpenses', JSON.stringify(fixedExpenses));
             render();
         }
 
+        function updateChart() {
+            const allDates = [...new Set([...Object.keys(savings), ...Object.keys(fixedExpenses)])].sort();
+            let runningTotal = 0;
+            const data = allDates.map(d => {
+                runningTotal += (parseInt(savings[d]) || 0) + (parseInt(fixedExpenses[d]) || 0);
+                return runningTotal;
+            });
+            const ctx = document.getElementById('myChart').getContext('2d');
+            if(window.myChart) window.myChart.destroy();
+            window.myChart = new Chart(ctx, { type: 'line', data: { labels: allDates, datasets: [{ label: '総資産推移', data, borderColor: '#2196f3', fill: true }] }, options: { maintainAspectRatio: false } });
+        }
+
         function exportFile() {
-            const blob = new Blob([JSON.stringify({savings, fixedExpenses, config})], {type:'application/json'});
+            const blob = new Blob([JSON.stringify({savings, fixedExpenses, monthlyPlans, config})], {type:'application/json'});
             const a = document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='backup.json'; a.click();
         }
 
@@ -155,11 +142,10 @@
             const r = new FileReader();
             r.onload = (res) => {
                 const d = JSON.parse(res.target.result);
-                savings = d.savings || {};
-                fixedExpenses = d.fixedExpenses || {};
-                config = d.config || config;
+                savings = d.savings || {}; fixedExpenses = d.fixedExpenses || {}; monthlyPlans = d.monthlyPlans || {}; config = d.config || config;
                 localStorage.setItem('mySavings', JSON.stringify(savings));
                 localStorage.setItem('myFixedExpenses', JSON.stringify(fixedExpenses));
+                localStorage.setItem('myMonthlyPlans', JSON.stringify(monthlyPlans));
                 localStorage.setItem('myConfig', JSON.stringify(config));
                 render();
             };
