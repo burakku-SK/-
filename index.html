@@ -2,95 +2,84 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>濡羽の総資産管理</title>
+    <title>濡羽の資産管理</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body { font-family: sans-serif; padding: 15px; background: #f0f2f5; }
-        .info-box { background: #fff; padding: 15px; border-radius: 8px; margin-bottom: 15px; text-align: center; border: 2px solid #2196f3; }
+        .header { display: flex; justify-content: space-between; align-items: center; font-weight: bold; margin-bottom: 10px; }
+        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-bottom: 15px; }
+        .cell { background: #fff; border-radius: 4px; padding: 10px 2px; text-align: center; cursor: pointer; border: 1px solid #ddd; font-size: 0.8em; }
         .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 15px; }
-        input, button { padding: 10px; border-radius: 4px; border: 1px solid #ccc; }
-        button { background: #4caf50; color: white; border: none; cursor: pointer; }
-        canvas { background: #fff; border-radius: 8px; padding: 10px; margin-top: 10px; }
+        button { padding: 10px; background: #4caf50; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        .info-box { background: #fff; padding: 10px; border-radius: 8px; margin-bottom: 15px; text-align: center; }
+        canvas { background: #fff; border-radius: 8px; padding: 10px; }
     </style>
 </head>
 <body>
+    <div class="header">
+        <button onclick="changeMonth(-1)">◀</button>
+        <div id="currentMonth"></div>
+        <button onclick="changeMonth(1)">▶</button>
+    </div>
+    <div id="calendar" class="calendar-grid"></div>
+    
     <div class="info-box">
-        <div>目標金額: <input type="number" id="targetGoal" style="width:100px" onchange="saveConfig()"></div>
-        <div id="statusText">総資産: 0円</div>
+        目標: <input type="number" id="targetGoal" style="width:80px" onchange="saveConfig()"> 円
+        <div id="progress">達成率: 0%</div>
     </div>
 
     <div class="controls">
-        <input type="date" id="dateInput">
         <input type="number" id="amountInput" placeholder="金額(+/ -)">
-        <button onclick="saveData()" style="grid-column: span 2">記録</button>
+        <button onclick="saveData()">記録</button>
         <button onclick="exportFile()" style="background:#2196f3">📥保存</button>
         <button onclick="document.getElementById('fileInput').click()" style="background:#2196f3">📤読込</button>
         <input type="file" id="fileInput" style="display:none" onchange="importFile(event)">
     </div>
-    
     <canvas id="myChart"></canvas>
 
     <script>
+        let cur = new Date();
         let savings = JSON.parse(localStorage.getItem('mySavings')) || {};
         let config = JSON.parse(localStorage.getItem('myConfig')) || { targetGoal: 1000000 };
         document.getElementById('targetGoal').value = config.targetGoal;
-        document.getElementById('dateInput').valueAsDate = new Date();
 
-        function saveConfig() {
-            config.targetGoal = parseInt(document.getElementById('targetGoal').value) || 1000000;
-            localStorage.setItem('myConfig', JSON.stringify(config));
+        function render() {
+            const y = cur.getFullYear(), m = cur.getMonth();
+            document.getElementById('currentMonth').innerText = `${y}年 ${m + 1}月`;
+            const cal = document.getElementById('calendar'); cal.innerHTML = '';
+            
+            // カレンダー構築
+            const days = new Date(y, m + 1, 0).getDate();
+            for(let i=1; i<=days; i++){
+                const d = `${y}-${(m+1).toString().padStart(2,'0')}-${i.toString().padStart(2,'0')}`;
+                const div = document.createElement('div');
+                div.className = 'cell';
+                div.innerHTML = `${i}<br><span style="color:${(savings[d]||0)>=0?'blue':'red'}">${savings[d]||''}</span>`;
+                div.onclick = () => { document.getElementById('amountInput').value = savings[d]||''; selectedDate = d; };
+                cal.appendChild(div);
+            }
             updateChart();
         }
 
-        function saveData() {
-            const date = document.getElementById('dateInput').value;
-            const val = document.getElementById('amountInput').value;
-            if(!date || !val) return alert("日付と金額を入力");
-            savings[date] = val;
-            localStorage.setItem('mySavings', JSON.stringify(savings));
-            updateChart();
-        }
-
-        let myChart = null;
         function updateChart() {
-            // 全データを日付順に並べ替え
             const sortedDates = Object.keys(savings).sort();
-            const labels = sortedDates;
             let total = 0;
-            const data = sortedDates.map(d => {
-                total += parseInt(savings[d]);
-                return total;
-            });
-
-            document.getElementById('statusText').innerText = `総資産: ${total}円 / 目標達成率: ${((total/config.targetGoal)*100).toFixed(1)}%`;
-
+            const data = sortedDates.map(d => { total += parseInt(savings[d]); return total; });
+            document.getElementById('progress').innerText = `総資産: ${total}円 / 達成率: ${((total/config.targetGoal)*100).toFixed(1)}%`;
+            
             const ctx = document.getElementById('myChart').getContext('2d');
-            if(myChart) myChart.destroy();
-            myChart = new Chart(ctx, {
-                type: 'line',
-                data: { labels, datasets: [{ label: '全期間の総資産推移', data, borderColor: '#2196f3', tension: 0.1, fill: true }] },
-                options: { responsive: true }
-            });
+            if(window.myChart) window.myChart.destroy();
+            window.myChart = new Chart(ctx, { type: 'line', data: { labels: sortedDates, datasets: [{ label: '総資産推移', data, borderColor: '#2196f3', fill: true }] } });
         }
 
-        function exportFile() {
-            const b = new Blob([JSON.stringify({savings, config})], {type: 'application/json'});
-            const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = 'total_assets.json'; a.click();
-        }
-
-        function importFile(e) {
-            const r = new FileReader();
-            r.onload = (res) => {
-                const d = JSON.parse(res.target.result);
-                savings = d.savings; config = d.config;
-                localStorage.setItem('mySavings', JSON.stringify(savings));
-                localStorage.setItem('myConfig', JSON.stringify(config));
-                updateChart();
-            };
-            r.readAsText(e.target.files[0]);
-        }
+        function saveConfig() { config.targetGoal = document.getElementById('targetGoal').value; localStorage.setItem('myConfig', JSON.stringify(config)); render(); }
+        function saveData() { savings[selectedDate] = document.getElementById('amountInput').value; localStorage.setItem('mySavings', JSON.stringify(savings)); render(); }
+        function changeMonth(n) { cur.setMonth(cur.getMonth()+n); render(); }
+        function exportFile() { const b = new Blob([JSON.stringify({savings, config})], {type:'application/json'}); const a = document.createElement('a'); a.href=URL.createObjectURL(b); a.download='data.json'; a.click(); }
+        function importFile(e) { const r = new FileReader(); r.onload = (res) => { const d = JSON.parse(res.target.result); savings=d.savings; config=d.config; localStorage.setItem('mySavings', JSON.stringify(savings)); localStorage.setItem('myConfig', JSON.stringify(config)); render(); }; r.readAsText(e.target.files[0]); }
         
-        updateChart();
+        let selectedDate = new Date().toISOString().split('T')[0];
+        render();
     </script>
 </body>
 </html>
