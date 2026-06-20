@@ -8,18 +8,18 @@
         body { font-family: sans-serif; padding: 10px; background: #f0f2f5; }
         .header { display: flex; justify-content: space-between; align-items: center; font-weight: bold; margin-bottom: 10px; }
         .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; margin: 10px 0; }
-        .cell { background: #fff; padding: 5px; text-align: center; border: 1px solid #ddd; font-size: 0.7em; cursor: pointer; }
-        .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
-        button { padding: 8px; border-radius: 4px; border: none; background: #2196f3; color: white; }
+        .cell { background: #fff; padding: 5px; text-align: center; border: 1px solid #ddd; font-size: 0.7em; cursor: pointer; height: 40px; }
+        .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 10px; }
+        button { padding: 8px; border-radius: 4px; border: none; background: #2196f3; color: white; cursor: pointer; }
         .info-box { background: #fff; padding: 10px; border-radius: 8px; margin-bottom: 10px; font-size: 0.9em; }
         .chart-wrapper { height: 250px; width: 100%; background: #fff; padding: 10px; margin-top: 10px; border-radius: 8px; }
     </style>
 </head>
 <body>
     <div class="header">
-        <button onclick="changeMonth(-1)">◀</button>
+        <button onclick="changeMonth(-1)">◀ 前月</button>
         <div id="currentMonth"></div>
-        <button onclick="changeMonth(1)">▶</button>
+        <button onclick="changeMonth(1)">翌月 ▶</button>
     </div>
     <div class="calendar-grid" id="calendar"></div>
     
@@ -27,7 +27,7 @@
         <div>総資産目標: <input type="number" id="targetGoal" onchange="saveAll()" style="width:70px">円</div>
         <div id="totalStatus" style="font-weight:bold; margin-top:5px"></div>
         <hr style="margin: 10px 0;">
-        <div>月間予算: <input type="number" id="monthlyBudget" onchange="saveAll()" style="width:70px">円</div>
+        <div>今月の予算設定: <input type="number" id="monthlyBudget" onchange="saveAll()" style="width:70px">円</div>
         <div id="monthStatus" style="font-weight:bold; margin-top:5px; color:#d32f2f"></div>
     </div>
 
@@ -49,30 +49,33 @@
         let config = JSON.parse(localStorage.getItem('myConfig')) || { targetGoal: 1000000, monthlyBudget: 100000 };
         document.getElementById('targetGoal').value = config.targetGoal;
         document.getElementById('monthlyBudget').value = config.monthlyBudget;
+        let selectedDate = new Date().toISOString().split('T')[0];
 
         function render() {
             const y = cur.getFullYear(), m = cur.getMonth();
             document.getElementById('currentMonth').innerText = `${y}年 ${m + 1}月`;
             const cal = document.getElementById('calendar'); cal.innerHTML = '';
             
-            // 1. 総資産の計算
+            // 1. 総資産の計算（全期間の合計）
             let total = 0;
             Object.values(savings).forEach(v => { const n = parseInt(v); if (!isNaN(n)) total += n; });
             const goal = parseInt(config.targetGoal) || 1;
-            document.getElementById('totalStatus').innerText = `総資産: ${total}円 (達成率: ${((total/goal)*100).toFixed(1)}%)`;
+            document.getElementById('totalStatus').innerText = `総資産: ${total}円 (目標達成率: ${((total/goal)*100).toFixed(1)}%)`;
 
-            // 2. 月間予算の計算
+            // 2. 今月の支出計算（マイナスのみ合計）
             let monthSpent = 0;
             const prefix = `${y}-${(m+1).toString().padStart(2,'0')}`;
             Object.keys(savings).forEach(d => {
                 if(d.startsWith(prefix)) {
                     const n = parseInt(savings[d]);
-                    if(!isNaN(n)) monthSpent += n;
+                    if(!isNaN(n) && n < 0) { // マイナスのみカウント
+                        monthSpent += Math.abs(n); 
+                    }
                 }
             });
             const budget = parseInt(config.monthlyBudget) || 0;
             const diff = budget - monthSpent;
-            document.getElementById('monthStatus').innerText = `今月収支: ${monthSpent}円 / 残り予算: ${diff}円`;
+            document.getElementById('monthStatus').innerText = `今月の支出合計: ${monthSpent}円 / 残り予算: ${diff}円`;
 
             // カレンダー構築
             const days = new Date(y, m + 1, 0).getDate();
@@ -81,8 +84,9 @@
                 const val = savings[d] || '';
                 const div = document.createElement('div');
                 div.className = 'cell';
+                div.style.backgroundColor = (d === selectedDate) ? '#e3f2fd' : '#fff';
                 div.innerHTML = `${i}<br><span style="color:${parseInt(val)>=0?'blue':'red'}">${val}</span>`;
-                div.onclick = () => { document.getElementById('amountInput').value = val; selectedDate = d; };
+                div.onclick = () => { selectedDate = d; document.getElementById('amountInput').value = val || ''; render(); };
                 cal.appendChild(div);
             }
             updateChart();
@@ -106,24 +110,22 @@
             });
         }
 
+        function changeMonth(n) { cur.setMonth(cur.getMonth() + n); render(); }
         function saveAll() {
             config.targetGoal = document.getElementById('targetGoal').value;
             config.monthlyBudget = document.getElementById('monthlyBudget').value;
             localStorage.setItem('myConfig', JSON.stringify(config));
             render();
         }
-
         function saveData() {
             savings[selectedDate] = document.getElementById('amountInput').value;
             localStorage.setItem('mySavings', JSON.stringify(savings));
             render();
         }
-
         function exportFile() {
             const blob = new Blob([JSON.stringify({savings, config})], {type:'application/json'});
             const a = document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='backup.json'; a.click();
         }
-
         function importFile(e) {
             const r = new FileReader();
             r.onload = (res) => {
@@ -135,8 +137,6 @@
             };
             r.readAsText(e.target.files[0]);
         }
-        
-        let selectedDate = new Date().toISOString().split('T')[0];
         render();
     </script>
 </body>
