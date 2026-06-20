@@ -29,7 +29,7 @@
         <div>総資産目標: <input type="number" id="targetGoal" onchange="saveAll()" style="width:70px">円</div>
         <div id="totalStatus" style="font-weight:bold; margin-top:5px; color:#1976d2;"></div>
         <hr style="margin: 10px 0;">
-        <strong>月間収支管理</strong>
+        <strong>月間収支計画</strong>
         <table>
             <tr><th>項目</th><th>金額</th></tr>
             <tr><td>月間収入</td><td><input type="number" id="monthlyIncome" style="width:80px"></td></tr>
@@ -75,11 +75,13 @@
             const monthKey = `${y}-${(m+1).toString().padStart(2,'0')}`;
             document.getElementById('currentMonth').innerText = `${y}年 ${m + 1}月`;
             
-            // 1. 総資産の計算・表示
+            // 1. 総資産の計算（日々の記録 + 計画収支も加味して合計）
             let total = 0;
             [savings, fixedExpenses].forEach(obj => {
                 Object.values(obj).forEach(v => { const n = parseInt(v); if (!isNaN(n)) total += n; });
             });
+            Object.values(monthlyPlans).forEach(p => { total += (parseInt(p.income) || 0) - (parseInt(p.fixed) || 0); });
+
             const goal = parseInt(config.targetGoal) || 1;
             document.getElementById('totalStatus').innerText = `総資産: ${total}円 (目標達成率: ${((total/goal)*100).toFixed(1)}%)`;
 
@@ -108,12 +110,19 @@
 
         function updateChart() {
             const ctx = document.getElementById('myChart').getContext('2d');
+            // すべての日付をユニークかつソートして取得
             const allDates = [...new Set([...Object.keys(savings), ...Object.keys(fixedExpenses)])].sort();
             
             if (myChart) myChart.destroy();
             
             let runningTotal = 0;
             const data = allDates.map(d => {
+                // 毎月1日であれば、その月の計画収支を加算
+                if(d.endsWith('-01')) {
+                    const monthKey = d.substring(0, 7);
+                    const plan = monthlyPlans[monthKey] || { income: 0, fixed: 0 };
+                    runningTotal += (parseInt(plan.income) || 0) - (parseInt(plan.fixed) || 0);
+                }
                 runningTotal += (parseInt(savings[d]) || 0) + (parseInt(fixedExpenses[d]) || 0);
                 return runningTotal;
             });
@@ -164,13 +173,4 @@
                 savings = d.savings || {}; fixedExpenses = d.fixedExpenses || {}; monthlyPlans = d.monthlyPlans || {}; config = d.config || config;
                 localStorage.setItem('mySavings', JSON.stringify(savings));
                 localStorage.setItem('myFixedExpenses', JSON.stringify(fixedExpenses));
-                localStorage.setItem('myMonthlyPlans', JSON.stringify(monthlyPlans));
-                localStorage.setItem('myConfig', JSON.stringify(config));
-                render();
-            };
-            r.readAsText(e.target.files[0]);
-        }
-        render();
-    </script>
-</body>
-</html>
+                localStorage.setItem('my
