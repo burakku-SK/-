@@ -7,13 +7,14 @@
     <style>
         body { font-family: sans-serif; padding: 15px; background: #f0f2f5; }
         .header { display: flex; justify-content: space-between; align-items: center; font-weight: bold; margin-bottom: 10px; }
-        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-bottom: 20px; }
+        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-bottom: 10px; }
         .cell { background: #fff; border-radius: 4px; padding: 8px 2px; text-align: center; cursor: pointer; font-size: 0.85em; border: 1px solid #ddd; }
         .cell.today { border: 2px solid #2196f3; }
         .amount { color: #d32f2f; font-weight: bold; display: block; font-size: 0.8em; }
-        .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 15px; }
-        button { padding: 10px; background: #4caf50; color: white; border: none; border-radius: 4px; cursor: pointer; }
-        canvas { background: #fff; border-radius: 8px; padding: 10px; }
+        .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 10px; }
+        input, button { padding: 8px; border-radius: 4px; border: 1px solid #ccc; }
+        button { background: #4caf50; color: white; border: none; cursor: pointer; }
+        #balanceDisplay { font-size: 1.2em; font-weight: bold; margin: 10px 0; color: #333; text-align: center; }
     </style>
 </head>
 <body>
@@ -25,17 +26,24 @@
     <div id="calendar" class="calendar-grid"></div>
     
     <div class="controls">
-        <input type="number" id="amountInput" placeholder="金額(円)">
+        <input type="number" id="initialBalance" placeholder="初期資金" onchange="saveConfig()">
+        <input type="number" id="amountInput" placeholder="本日の支出">
         <button onclick="saveData()">記録</button>
     </div>
-    
+    <div id="balanceDisplay">現在の予想資金: -</div>
     <canvas id="myChart"></canvas>
 
     <script>
         let currentViewDate = new Date();
         let savings = JSON.parse(localStorage.getItem('mySavings')) || {};
-        let selectedDate = new Date().toISOString().split('T')[0];
-        let myChart;
+        let config = JSON.parse(localStorage.getItem('myConfig')) || { initialBalance: 0 };
+        document.getElementById('initialBalance').value = config.initialBalance;
+
+        function saveConfig() {
+            config.initialBalance = parseInt(document.getElementById('initialBalance').value) || 0;
+            localStorage.setItem('myConfig', JSON.stringify(config));
+            renderCalendar();
+        }
 
         function renderCalendar() {
             const year = currentViewDate.getFullYear();
@@ -45,19 +53,20 @@
             const cal = document.getElementById('calendar');
             cal.innerHTML = '';
             const daysInMonth = new Date(year, month + 1, 0).getDate();
-            const todayStr = new Date().toISOString().split('T')[0];
-
+            
+            let totalSpent = 0;
             for (let i = 1; i <= daysInMonth; i++) {
                 const dateStr = `${year}-${(month + 1).toString().padStart(2, '0')}-${i.toString().padStart(2, '0')}`;
+                const val = savings[dateStr] || 0;
+                totalSpent += parseInt(val);
+                
                 const div = document.createElement('div');
-                div.className = `cell ${dateStr === todayStr ? 'today' : ''}`;
-                div.innerHTML = `${i}<span class="amount">${savings[dateStr] || ''}</span>`;
-                div.onclick = () => { 
-                    selectedDate = dateStr; 
-                    document.getElementById('amountInput').value = savings[dateStr] || ''; 
-                };
+                div.className = 'cell';
+                div.innerHTML = `${i}<span class="amount">${val > 0 ? val : ''}</span>`;
+                div.onclick = () => { document.getElementById('amountInput').value = val; selectedDate = dateStr; };
                 cal.appendChild(div);
             }
+            document.getElementById('balanceDisplay').innerText = `現在の予想資金: ${config.initialBalance - totalSpent} 円`;
             updateChart();
         }
 
@@ -66,37 +75,28 @@
             const year = currentViewDate.getFullYear();
             const month = currentViewDate.getMonth();
             const labels = [], data = [];
+            let currentBalance = config.initialBalance;
             
-            // 全日のデータを配列化
             const daysInMonth = new Date(year, month + 1, 0).getDate();
             for(let i=1; i<=daysInMonth; i++) {
                 labels.push(i);
                 const dateStr = `${year}-${(month+1).toString().padStart(2, '0')}-${i.toString().padStart(2, '0')}`;
-                data.push(savings[dateStr] ? parseInt(savings[dateStr]) : 0);
+                currentBalance -= (savings[dateStr] ? parseInt(savings[dateStr]) : 0);
+                data.push(currentBalance);
             }
 
-            if(myChart) myChart.destroy();
-            myChart = new Chart(ctx, {
-                type: 'line', // ここを line に変更
-                data: { 
-                    labels, 
-                    datasets: [{ 
-                        label: '支出推移', 
-                        data, 
-                        borderColor: '#4caf50', 
-                        tension: 0.3,
-                        fill: false 
-                    }] 
-                },
-                options: { responsive: true, scales: { y: { beginAtZero: true } } }
+            if(window.myChart) window.myChart.destroy();
+            window.myChart = new Chart(ctx, {
+                type: 'line',
+                data: { labels, datasets: [{ label: '資金推移', data, borderColor: '#2196f3', tension: 0.2, fill: true, backgroundColor: 'rgba(33, 150, 243, 0.1)' }] },
+                options: { responsive: true }
             });
         }
 
+        let selectedDate = new Date().toISOString().split('T')[0];
         function changeMonth(diff) { currentViewDate.setMonth(currentViewDate.getMonth() + diff); renderCalendar(); }
         function saveData() {
-            const val = document.getElementById('amountInput').value;
-            if (!selectedDate || !val) return alert("日付を選択して金額を入力");
-            savings[selectedDate] = val;
+            savings[selectedDate] = document.getElementById('amountInput').value;
             localStorage.setItem('mySavings', JSON.stringify(savings));
             renderCalendar();
         }
