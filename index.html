@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>濡羽の貯金管理</title>
+    <style>
+        body { font-family: sans-serif; padding: 10px; margin: 0; font-size: 14px; }
+        #log-area { height: 100px; background: #f9f9f9; border: 1px solid #ddd; overflow-y: scroll; padding: 10px; margin-bottom: 10px; }
+        .controls { display: flex; gap: 5px; margin-bottom: 10px; }
+        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
+        .cell { border: 1px solid #ccc; padding: 5px; text-align: center; cursor: pointer; }
+        .amount { color: blue; display: block; font-size: 0.7em; }
+    </style>
+</head>
+<body>
+    <h3>貯金ログ</h3>
+    <div id="log-area"></div>
+    
+    <div class="controls">
+        <input type="number" id="amountInput" placeholder="金額" style="width: 80px;">
+        <button onclick="saveData()">記録</button>
+        <button onclick="exportData()">保存(コピー)</button>
+        <button onclick="importData()">読込(貼付)</button>
+    </div>
+
+    <div id="calendar" class="calendar-grid"></div>
+
+    <script>
+        let selectedDate = null;
+        let savings = JSON.parse(localStorage.getItem('mySavings')) || {};
+
+        function logMessage(msg) {
+            const time = new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+            document.getElementById('log-area').innerHTML += `<div>[${time}] ${msg}</div>`;
+        }
+
+        function saveData() {
+            const amount = document.getElementById('amountInput').value;
+            if (!selectedDate || !amount) return alert("日付と金額を選択してください");
+            savings[selectedDate] = amount;
+            localStorage.setItem('mySavings', JSON.stringify(savings));
+            logMessage(`${selectedDate} に ${amount}円 を記録`);
+            renderCalendar();
+        }
+
+        function exportData() {
+            const dataStr = JSON.stringify(savings);
+            navigator.clipboard.writeText(dataStr);
+            alert("データをクリップボードにコピーしました！メモ帳などに保存してください。");
+        }
+
+        function importData() {
+            const dataStr = prompt("保存していたデータを貼り付けてください：");
+            if (dataStr) {
+                savings = JSON.parse(dataStr);
+                localStorage.setItem('mySavings', JSON.stringify(savings));
+                renderCalendar();
+                logMessage("データを復元しました");
+            }
+        }
+
+        function renderCalendar() {
+            const cal = document.getElementById('calendar');
+            cal.innerHTML = '';
+            for (let i = 1; i <= 30; i++) {
+                const dateKey = `2026-06-${i.toString().padStart(2, '0')}`;
+                const div = document.createElement('div');
+                div.className = 'cell';
+                div.innerHTML = `${i}<span class="amount">${savings[dateKey] || ''}</span>`;
+                div.onclick = () => { selectedDate = dateKey; logMessage(`${i}日を選択中`); };
+                cal.appendChild(div);
+            }
+        }
+        
+        renderCalendar();
+        logMessage("2026-06-20 15:28: 起動完了");
+    </script>
+</body>
+</html>
