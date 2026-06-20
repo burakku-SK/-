@@ -6,22 +6,29 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body { font-family: sans-serif; padding: 10px; background: #f0f2f5; }
+        .header { display: flex; justify-content: space-between; align-items: center; font-weight: bold; margin-bottom: 10px; }
         .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; margin: 10px 0; }
         .cell { background: #fff; padding: 5px; text-align: center; border: 1px solid #ddd; font-size: 0.7em; cursor: pointer; }
         .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
         button { padding: 8px; border-radius: 4px; border: none; background: #2196f3; color: white; }
-        .info-box { background: #fff; padding: 10px; border-radius: 8px; margin-bottom: 10px; text-align: center; }
-        /* グラフの領域をしっかり確保 */
+        .info-box { background: #fff; padding: 10px; border-radius: 8px; margin-bottom: 10px; font-size: 0.9em; }
         .chart-wrapper { height: 250px; width: 100%; background: #fff; padding: 10px; margin-top: 10px; border-radius: 8px; }
     </style>
 </head>
 <body>
-    <div id="currentMonth" style="text-align:center; font-weight:bold;"></div>
+    <div class="header">
+        <button onclick="changeMonth(-1)">◀</button>
+        <div id="currentMonth"></div>
+        <button onclick="changeMonth(1)">▶</button>
+    </div>
     <div class="calendar-grid" id="calendar"></div>
     
     <div class="info-box">
-        目標: <input type="number" id="targetGoal" onchange="saveAll()" style="width:80px">円
-        <div id="statusText">計算中...</div>
+        <div>総資産目標: <input type="number" id="targetGoal" onchange="saveAll()" style="width:70px">円</div>
+        <div id="totalStatus" style="font-weight:bold; margin-top:5px"></div>
+        <hr style="margin: 10px 0;">
+        <div>月間予算: <input type="number" id="monthlyBudget" onchange="saveAll()" style="width:70px">円</div>
+        <div id="monthStatus" style="font-weight:bold; margin-top:5px; color:#d32f2f"></div>
     </div>
 
     <div class="controls">
@@ -39,25 +46,35 @@
     <script>
         let cur = new Date();
         let savings = JSON.parse(localStorage.getItem('mySavings')) || {};
-        let config = JSON.parse(localStorage.getItem('myConfig')) || { targetGoal: 1000000 };
+        let config = JSON.parse(localStorage.getItem('myConfig')) || { targetGoal: 1000000, monthlyBudget: 100000 };
         document.getElementById('targetGoal').value = config.targetGoal;
+        document.getElementById('monthlyBudget').value = config.monthlyBudget;
 
         function render() {
             const y = cur.getFullYear(), m = cur.getMonth();
             document.getElementById('currentMonth').innerText = `${y}年 ${m + 1}月`;
             const cal = document.getElementById('calendar'); cal.innerHTML = '';
             
+            // 1. 総資産の計算
             let total = 0;
-            // データを安全に数値化して合計
-            Object.values(savings).forEach(v => {
-                const n = parseInt(v);
-                if (!isNaN(n)) total += n;
-            });
-
+            Object.values(savings).forEach(v => { const n = parseInt(v); if (!isNaN(n)) total += n; });
             const goal = parseInt(config.targetGoal) || 1;
-            const progress = ((total / goal) * 100).toFixed(1);
-            document.getElementById('statusText').innerText = `総資産: ${total}円 / 達成率: ${progress}%`;
+            document.getElementById('totalStatus').innerText = `総資産: ${total}円 (達成率: ${((total/goal)*100).toFixed(1)}%)`;
 
+            // 2. 月間予算の計算
+            let monthSpent = 0;
+            const prefix = `${y}-${(m+1).toString().padStart(2,'0')}`;
+            Object.keys(savings).forEach(d => {
+                if(d.startsWith(prefix)) {
+                    const n = parseInt(savings[d]);
+                    if(!isNaN(n)) monthSpent += n;
+                }
+            });
+            const budget = parseInt(config.monthlyBudget) || 0;
+            const diff = budget - monthSpent;
+            document.getElementById('monthStatus').innerText = `今月収支: ${monthSpent}円 / 残り予算: ${diff}円`;
+
+            // カレンダー構築
             const days = new Date(y, m + 1, 0).getDate();
             for(let i=1; i<=days; i++){
                 const d = `${y}-${(m+1).toString().padStart(2,'0')}-${i.toString().padStart(2,'0')}`;
@@ -75,13 +92,11 @@
         function updateChart() {
             const sortedDates = Object.keys(savings).sort();
             let runningTotal = 0;
-            // 数値がない場合は0として処理する安全なマッピング
             const data = sortedDates.map(d => {
                 const val = parseInt(savings[d]) || 0;
                 runningTotal += val;
                 return runningTotal;
             });
-            
             const ctx = document.getElementById('myChart').getContext('2d');
             if(myChart) myChart.destroy();
             myChart = new Chart(ctx, { 
@@ -93,6 +108,7 @@
 
         function saveAll() {
             config.targetGoal = document.getElementById('targetGoal').value;
+            config.monthlyBudget = document.getElementById('monthlyBudget').value;
             localStorage.setItem('myConfig', JSON.stringify(config));
             render();
         }
