@@ -3,18 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <title>濡羽の貯金管理</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body { font-family: sans-serif; padding: 15px; background: #f0f2f5; }
         .header { display: flex; justify-content: space-between; align-items: center; font-weight: bold; margin-bottom: 10px; }
-        #log-area { height: 50px; background: #fff; border-radius: 8px; padding: 10px; margin-bottom: 15px; font-size: 0.9em; border: 1px solid #ccc; }
-        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
-        .cell { background: #fff; border-radius: 4px; padding: 8px 2px; text-align: center; cursor: pointer; font-size: 0.85em; }
-        .cell:hover { background: #e3f2fd; }
+        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-bottom: 20px; }
+        .cell { background: #fff; border-radius: 4px; padding: 8px 2px; text-align: center; cursor: pointer; font-size: 0.85em; border: 1px solid #ddd; }
         .cell.today { border: 2px solid #2196f3; }
         .amount { color: #d32f2f; font-weight: bold; display: block; font-size: 0.8em; }
-        .controls { margin-top: 15px; display: flex; gap: 5px; }
-        input, button { padding: 8px; border-radius: 4px; border: 1px solid #ccc; }
-        button { background: #4caf50; color: white; cursor: pointer; border: none; }
+        .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+        button { padding: 10px; background: #4caf50; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        canvas { background: #fff; border-radius: 8px; padding: 10px; margin-top: 10px; }
     </style>
 </head>
 <body>
@@ -23,20 +22,19 @@
         <div id="currentMonth"></div>
         <button onclick="changeMonth(1)">▶</button>
     </div>
-    <div id="log-area">日付を選択してください</div>
     <div id="calendar" class="calendar-grid"></div>
+    
     <div class="controls">
-        <input type="number" id="amountInput" placeholder="金額">
+        <input type="number" id="amountInput" placeholder="金額(円)">
         <button onclick="saveData()">記録</button>
-        <button onclick="exportFile()">保存</button>
-        <button onclick="document.getElementById('fileInput').click()">読込</button>
-        <input type="file" id="fileInput" style="display:none" onchange="importFile(event)">
     </div>
+    
+    <canvas id="myChart"></canvas>
 
     <script>
         let currentViewDate = new Date();
         let savings = JSON.parse(localStorage.getItem('mySavings')) || {};
-        let selectedDate = null;
+        let myChart;
 
         function renderCalendar() {
             const year = currentViewDate.getFullYear();
@@ -53,38 +51,44 @@
                 const div = document.createElement('div');
                 div.className = `cell ${dateStr === todayStr ? 'today' : ''}`;
                 div.innerHTML = `${i}<span class="amount">${savings[dateStr] || ''}</span>`;
-                div.onclick = () => { selectedDate = dateStr; document.getElementById('log-area').innerText = `${dateStr} を選択中`; };
+                div.onclick = () => { document.getElementById('amountInput').value = savings[dateStr] || ''; selectedDate = dateStr; };
                 cal.appendChild(div);
             }
+            updateChart();
         }
 
-        function changeMonth(diff) {
-            currentViewDate.setMonth(currentViewDate.getMonth() + diff);
-            renderCalendar();
+        function updateChart() {
+            const ctx = document.getElementById('myChart').getContext('2d');
+            const year = currentViewDate.getFullYear();
+            const month = currentViewDate.getMonth();
+            const labels = [], data = [];
+            
+            for(let i=1; i<=31; i++) {
+                const dateStr = `${year}-${(month+1).toString().padStart(2, '0')}-${i.toString().padStart(2, '0')}`;
+                if (savings[dateStr]) {
+                    labels.push(i);
+                    data.push(parseInt(savings[dateStr]));
+                }
+            }
+
+            if(myChart) myChart.destroy();
+            myChart = new Chart(ctx, {
+                type: 'bar',
+                data: { labels, datasets: [{ label: '日別支出', data, backgroundColor: '#4caf50' }] },
+                options: { responsive: true }
+            });
         }
 
+        function changeMonth(diff) { currentViewDate.setMonth(currentViewDate.getMonth() + diff); renderCalendar(); }
         function saveData() {
             const val = document.getElementById('amountInput').value;
-            if (!selectedDate || !val) return alert("日付と金額を入力");
+            if (!selectedDate || !val) return alert("日付を選択して金額を入力");
             savings[selectedDate] = val;
             localStorage.setItem('mySavings', JSON.stringify(savings));
             renderCalendar();
         }
-
-        function exportFile() {
-            const blob = new Blob([JSON.stringify(savings)], {type: 'application/json'});
-            const a = document.createElement('a');
-            a.href = URL.createObjectURL(blob);
-            a.download = 'savings_data.json';
-            a.click();
-        }
-
-        function importFile(e) {
-            const reader = new FileReader();
-            reader.onload = (res) => { savings = JSON.parse(res.target.result); localStorage.setItem('mySavings', JSON.stringify(savings)); renderCalendar(); };
-            reader.readAsText(e.target.files[0]);
-        }
         
+        let selectedDate = new Date().toISOString().split('T')[0];
         renderCalendar();
     </script>
 </body>
