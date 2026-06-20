@@ -2,54 +2,65 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>貯金管理</title>
+    <title>濡羽の貯金管理</title>
     <style>
         body { font-family: sans-serif; padding: 15px; background: #f0f2f5; }
-        .header { text-align: center; font-weight: bold; font-size: 1.2em; margin-bottom: 10px; }
-        #log-area { height: 60px; background: #fff; border-radius: 8px; border: 1px solid #ccc; padding: 10px; margin-bottom: 15px; font-size: 0.9em; overflow-y: auto; }
-        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
-        .cell { background: #fff; border-radius: 4px; padding: 10px 5px; text-align: center; cursor: pointer; border: 1px solid #ddd; transition: 0.2s; }
+        .header { display: flex; justify-content: space-between; align-items: center; font-weight: bold; margin-bottom: 10px; }
+        #log-area { height: 50px; background: #fff; border-radius: 8px; padding: 10px; margin-bottom: 15px; font-size: 0.9em; border: 1px solid #ccc; }
+        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+        .cell { background: #fff; border-radius: 4px; padding: 8px 2px; text-align: center; cursor: pointer; font-size: 0.85em; }
         .cell:hover { background: #e3f2fd; }
-        .cell.today { border: 2px solid #2196f3; background: #e3f2fd; }
-        .amount { color: #d32f2f; font-weight: bold; display: block; font-size: 0.8em; margin-top: 5px; }
-        .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 15px; }
-        button { padding: 10px; cursor: pointer; border: none; border-radius: 5px; background: #4caf50; color: white; }
+        .cell.today { border: 2px solid #2196f3; }
+        .amount { color: #d32f2f; font-weight: bold; display: block; font-size: 0.8em; }
+        .controls { margin-top: 15px; display: flex; gap: 5px; }
+        input, button { padding: 8px; border-radius: 4px; border: 1px solid #ccc; }
+        button { background: #4caf50; color: white; cursor: pointer; border: none; }
     </style>
 </head>
 <body>
-    <div class="header" id="currentMonth"></div>
-    <div id="log-area">記録を選択してください</div>
+    <div class="header">
+        <button onclick="changeMonth(-1)">◀</button>
+        <div id="currentMonth"></div>
+        <button onclick="changeMonth(1)">▶</button>
+    </div>
+    <div id="log-area">日付を選択してください</div>
     <div id="calendar" class="calendar-grid"></div>
     <div class="controls">
-        <input type="number" id="amountInput" placeholder="金額(円)">
-        <button onclick="saveData()">記録する</button>
+        <input type="number" id="amountInput" placeholder="金額">
+        <button onclick="saveData()">記録</button>
         <button onclick="exportFile()">保存</button>
         <button onclick="document.getElementById('fileInput').click()">読込</button>
         <input type="file" id="fileInput" style="display:none" onchange="importFile(event)">
     </div>
 
     <script>
-        const now = new Date();
-        const year = now.getFullYear();
-        const month = now.getMonth() + 1;
-        document.getElementById('currentMonth').innerText = `${year}年 ${month}月`;
-        
+        let currentViewDate = new Date();
         let savings = JSON.parse(localStorage.getItem('mySavings')) || {};
         let selectedDate = null;
 
         function renderCalendar() {
+            const year = currentViewDate.getFullYear();
+            const month = currentViewDate.getMonth();
+            document.getElementById('currentMonth').innerText = `${year}年 ${month + 1}月`;
+            
             const cal = document.getElementById('calendar');
-            const daysInMonth = new Date(year, month, 0).getDate();
-            const todayStr = now.toISOString().split('T')[0];
             cal.innerHTML = '';
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            const todayStr = new Date().toISOString().split('T')[0];
+
             for (let i = 1; i <= daysInMonth; i++) {
-                const dateStr = `${year}-${month.toString().padStart(2, '0')}-${i.toString().padStart(2, '0')}`;
+                const dateStr = `${year}-${(month + 1).toString().padStart(2, '0')}-${i.toString().padStart(2, '0')}`;
                 const div = document.createElement('div');
                 div.className = `cell ${dateStr === todayStr ? 'today' : ''}`;
                 div.innerHTML = `${i}<span class="amount">${savings[dateStr] || ''}</span>`;
                 div.onclick = () => { selectedDate = dateStr; document.getElementById('log-area').innerText = `${dateStr} を選択中`; };
                 cal.appendChild(div);
             }
+        }
+
+        function changeMonth(diff) {
+            currentViewDate.setMonth(currentViewDate.getMonth() + diff);
+            renderCalendar();
         }
 
         function saveData() {
@@ -64,7 +75,7 @@
             const blob = new Blob([JSON.stringify(savings)], {type: 'application/json'});
             const a = document.createElement('a');
             a.href = URL.createObjectURL(blob);
-            a.download = `savings_${year}${month}.json`;
+            a.download = 'savings_data.json';
             a.click();
         }
 
