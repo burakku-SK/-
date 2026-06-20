@@ -11,9 +11,9 @@
         .cell { background: #fff; border-radius: 4px; padding: 8px 2px; text-align: center; cursor: pointer; font-size: 0.85em; border: 1px solid #ddd; }
         .cell.today { border: 2px solid #2196f3; }
         .amount { color: #d32f2f; font-weight: bold; display: block; font-size: 0.8em; }
-        .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+        .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 15px; }
         button { padding: 10px; background: #4caf50; color: white; border: none; border-radius: 4px; cursor: pointer; }
-        canvas { background: #fff; border-radius: 8px; padding: 10px; margin-top: 10px; }
+        canvas { background: #fff; border-radius: 8px; padding: 10px; }
     </style>
 </head>
 <body>
@@ -34,6 +34,7 @@
     <script>
         let currentViewDate = new Date();
         let savings = JSON.parse(localStorage.getItem('mySavings')) || {};
+        let selectedDate = new Date().toISOString().split('T')[0];
         let myChart;
 
         function renderCalendar() {
@@ -51,7 +52,10 @@
                 const div = document.createElement('div');
                 div.className = `cell ${dateStr === todayStr ? 'today' : ''}`;
                 div.innerHTML = `${i}<span class="amount">${savings[dateStr] || ''}</span>`;
-                div.onclick = () => { document.getElementById('amountInput').value = savings[dateStr] || ''; selectedDate = dateStr; };
+                div.onclick = () => { 
+                    selectedDate = dateStr; 
+                    document.getElementById('amountInput').value = savings[dateStr] || ''; 
+                };
                 cal.appendChild(div);
             }
             updateChart();
@@ -63,19 +67,28 @@
             const month = currentViewDate.getMonth();
             const labels = [], data = [];
             
-            for(let i=1; i<=31; i++) {
+            // 全日のデータを配列化
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            for(let i=1; i<=daysInMonth; i++) {
+                labels.push(i);
                 const dateStr = `${year}-${(month+1).toString().padStart(2, '0')}-${i.toString().padStart(2, '0')}`;
-                if (savings[dateStr]) {
-                    labels.push(i);
-                    data.push(parseInt(savings[dateStr]));
-                }
+                data.push(savings[dateStr] ? parseInt(savings[dateStr]) : 0);
             }
 
             if(myChart) myChart.destroy();
             myChart = new Chart(ctx, {
-                type: 'bar',
-                data: { labels, datasets: [{ label: '日別支出', data, backgroundColor: '#4caf50' }] },
-                options: { responsive: true }
+                type: 'line', // ここを line に変更
+                data: { 
+                    labels, 
+                    datasets: [{ 
+                        label: '支出推移', 
+                        data, 
+                        borderColor: '#4caf50', 
+                        tension: 0.3,
+                        fill: false 
+                    }] 
+                },
+                options: { responsive: true, scales: { y: { beginAtZero: true } } }
             });
         }
 
@@ -88,7 +101,6 @@
             renderCalendar();
         }
         
-        let selectedDate = new Date().toISOString().split('T')[0];
         renderCalendar();
     </script>
 </body>
