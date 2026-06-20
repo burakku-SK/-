@@ -11,6 +11,8 @@
         .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
         button { padding: 8px; border-radius: 4px; border: none; background: #2196f3; color: white; }
         .info-box { background: #fff; padding: 10px; border-radius: 8px; margin-bottom: 10px; text-align: center; }
+        /* グラフの領域をしっかり確保 */
+        .chart-wrapper { height: 250px; width: 100%; background: #fff; padding: 10px; margin-top: 10px; border-radius: 8px; }
     </style>
 </head>
 <body>
@@ -29,7 +31,10 @@
         <button onclick="document.getElementById('fileInput').click()">📤読込</button>
         <input type="file" id="fileInput" style="display:none" onchange="importFile(event)">
     </div>
-    <canvas id="myChart"></canvas>
+    
+    <div class="chart-wrapper">
+        <canvas id="myChart"></canvas>
+    </div>
 
     <script>
         let cur = new Date();
@@ -43,10 +48,10 @@
             const cal = document.getElementById('calendar'); cal.innerHTML = '';
             
             let total = 0;
-            // 全ての保存データから合計を算出（NaN対策済み）
+            // データを安全に数値化して合計
             Object.values(savings).forEach(v => {
-                const num = parseInt(v);
-                if (!isNaN(num)) total += num;
+                const n = parseInt(v);
+                if (!isNaN(n)) total += n;
             });
 
             const goal = parseInt(config.targetGoal) || 1;
@@ -66,18 +71,24 @@
             updateChart();
         }
 
+        let myChart;
         function updateChart() {
             const sortedDates = Object.keys(savings).sort();
             let runningTotal = 0;
+            // 数値がない場合は0として処理する安全なマッピング
             const data = sortedDates.map(d => {
-                const val = parseInt(savings[d]);
-                if (!isNaN(val)) runningTotal += val;
+                const val = parseInt(savings[d]) || 0;
+                runningTotal += val;
                 return runningTotal;
             });
             
             const ctx = document.getElementById('myChart').getContext('2d');
-            if(window.myChart) window.myChart.destroy();
-            window.myChart = new Chart(ctx, { type: 'line', data: { labels: sortedDates, datasets: [{ label: '総資産推移', data, borderColor: '#2196f3', fill: true }] } });
+            if(myChart) myChart.destroy();
+            myChart = new Chart(ctx, { 
+                type: 'line', 
+                data: { labels: sortedDates, datasets: [{ label: '総資産推移', data, borderColor: '#2196f3', fill: true }] },
+                options: { maintainAspectRatio: false }
+            });
         }
 
         function saveAll() {
