@@ -2,96 +2,96 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>濡羽の資産管理</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        body { font-family: sans-serif; padding: 10px; background: #f0f2f5; }
+        body { font-family: sans-serif; padding: 10px; background: #f0f2f5; font-size: 14px; }
         .header { display: flex; justify-content: space-between; align-items: center; font-weight: bold; margin-bottom: 10px; }
+        .info-box { background: #fff; padding: 10px; border-radius: 8px; margin-bottom: 10px; }
         .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; margin: 10px 0; }
-        .cell { background: #fff; padding: 5px; text-align: center; border: 1px solid #ddd; font-size: 0.7em; cursor: pointer; height: 45px; }
-        .cell-fixed { background: #fff0f0; border-color: #ffcdd2; }
+        .cell { background: #fff; padding: 5px; text-align: center; border: 1px solid #ddd; height: 40px; cursor: pointer; }
+        .cell-fixed { background: #fff0f0; border: 1px solid #ffcdd2; }
         .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 10px; }
         button { padding: 8px; border-radius: 4px; border: none; background: #2196f3; color: white; cursor: pointer; }
-        .info-box { background: #fff; padding: 10px; border-radius: 8px; margin-bottom: 10px; font-size: 0.9em; }
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-        th, td { border: 1px solid #ddd; padding: 8px; text-align: center; }
-        .chart-wrapper { height: 250px; width: 100%; background: #fff; padding: 10px; margin-top: 10px; border-radius: 8px; position: relative; }
+        table { width: 100%; border-collapse: collapse; margin-top: 5px; }
+        th, td { border: 1px solid #ddd; padding: 5px; text-align: center; }
+        .chart-wrapper { height: 200px; background: #fff; padding: 10px; border-radius: 8px; }
     </style>
 </head>
 <body>
+
     <div class="header">
         <button onclick="changeMonth(-1)">◀ 前月</button>
         <div id="currentMonth"></div>
         <button onclick="changeMonth(1)">翌月 ▶</button>
     </div>
-    
+
     <div class="info-box">
-        <div>総資産目標: <input type="number" id="targetGoal" onchange="saveAll()" style="width:70px">円</div>
+        <div>目標金額: <input type="number" id="targetGoal" onchange="saveAll()" style="width:100px">円</div>
         <div id="totalStatus" style="font-weight:bold; margin-top:5px; color:#1976d2;"></div>
-        <hr style="margin: 10px 0;">
+        <hr>
         <strong>月間収支計画</strong>
         <table>
             <tr><th>項目</th><th>金額</th></tr>
-            <tr><td>月間収入</td><td><input type="number" id="monthlyIncome" style="width:80px"></td></tr>
-            <tr><td>固定支出</td><td><input type="number" id="monthlyFixed" style="width:80px"></td></tr>
+            <tr><td>収入</td><td><input type="number" id="monthlyIncome" style="width:80px"></td></tr>
+            <tr><td>固定費</td><td><input type="number" id="monthlyFixed" style="width:80px"></td></tr>
             <tr><td>収支残</td><td id="balanceDisplay">0</td></tr>
         </table>
-        <button onclick="saveMonthlyData()" style="width:100%; margin-top:10px; background:#4caf50">収支表を保存</button>
+        <button onclick="saveMonthlyData()" style="width:100%; margin-top:5px; background:#4caf50">収支表を保存</button>
     </div>
 
     <div class="calendar-grid" id="calendar"></div>
 
-    <div class="controls" style="grid-template-columns: 1fr 1fr auto;">
+    <div class="controls">
         <input type="number" id="amountInput" placeholder="金額(+/ -)">
-        <label><input type="checkbox" id="isFixed"> 固定支出</label>
-        <button onclick="saveData()" style="background:#4caf50">記録</button>
+        <label style="display:flex; align-items:center;"><input type="checkbox" id="isFixed"> 固定支出</label>
+        <button onclick="saveData()" style="grid-column: span 2; background:#4caf50">記録</button>
         <button onclick="exportFile()">📥保存</button>
         <button onclick="document.getElementById('fileInput').click()">📤読込</button>
         <input type="file" id="fileInput" style="display:none" onchange="importFile(event)">
     </div>
-    
+
     <div class="chart-wrapper">
         <canvas id="myChart"></canvas>
     </div>
 
     <script>
+        // データ初期化（存在しない場合は空オブジェクト）
         let cur = new Date();
-        let myChart = null;
         let savings = JSON.parse(localStorage.getItem('mySavings')) || {};
         let fixedExpenses = JSON.parse(localStorage.getItem('myFixedExpenses')) || {};
         let monthlyPlans = JSON.parse(localStorage.getItem('myMonthlyPlans')) || {};
-        let config = JSON.parse(localStorage.getItem('myConfig')) || { targetGoal: 1000000 };
-        document.getElementById('targetGoal').value = config.targetGoal;
+        let config = JSON.parse(localStorage.getItem('myConfig')) || { targetGoal: 2500000 };
+        
+        let myChart = null;
         let selectedDate = new Date().toISOString().split('T')[0];
 
-        function changeMonth(n) {
-            cur.setDate(1);
-            cur.setMonth(cur.getMonth() + n);
-            render();
-        }
-
+        // 画面描画の基本関数
         function render() {
+            document.getElementById('targetGoal').value = config.targetGoal;
             const y = cur.getFullYear(), m = cur.getMonth();
             const monthKey = `${y}-${(m+1).toString().padStart(2,'0')}`;
             document.getElementById('currentMonth').innerText = `${y}年 ${m + 1}月`;
             
-            // 1. 総資産の計算（日々の記録 + 計画収支も加味して合計）
+            // 1. 総資産計算
             let total = 0;
             [savings, fixedExpenses].forEach(obj => {
-                Object.values(obj).forEach(v => { const n = parseInt(v); if (!isNaN(n)) total += n; });
+                Object.values(obj).forEach(v => { total += (parseInt(v) || 0); });
             });
             Object.values(monthlyPlans).forEach(p => { total += (parseInt(p.income) || 0) - (parseInt(p.fixed) || 0); });
-
+            
             const goal = parseInt(config.targetGoal) || 1;
-            document.getElementById('totalStatus').innerText = `総資産: ${total}円 (目標達成率: ${((total/goal)*100).toFixed(1)}%)`;
+            const percent = ((total / goal) * 100).toFixed(1);
+            document.getElementById('totalStatus').innerText = `総資産: ${total}円 (達成率: ${percent}%)`;
 
-            // 2. 収支表の表示
+            // 2. 収支表表示
             const plan = monthlyPlans[monthKey] || { income: 0, fixed: 0 };
-            document.getElementById('monthlyIncome').value = plan.income || 0;
-            document.getElementById('monthlyFixed').value = plan.fixed || 0;
+            document.getElementById('monthlyIncome').value = plan.income;
+            document.getElementById('monthlyFixed').value = plan.fixed;
             document.getElementById('balanceDisplay').innerText = (plan.income - plan.fixed);
 
-            // 3. カレンダー構築
+            // 3. カレンダー描画
             const cal = document.getElementById('calendar'); cal.innerHTML = '';
             const days = new Date(y, m + 1, 0).getDate();
             for(let i=1; i<=days; i++){
@@ -110,67 +110,58 @@
 
         function updateChart() {
             const ctx = document.getElementById('myChart').getContext('2d');
-            // すべての日付をユニークかつソートして取得
             const allDates = [...new Set([...Object.keys(savings), ...Object.keys(fixedExpenses)])].sort();
-            
             if (myChart) myChart.destroy();
-            
             let runningTotal = 0;
             const data = allDates.map(d => {
-                // 毎月1日であれば、その月の計画収支を加算
                 if(d.endsWith('-01')) {
-                    const monthKey = d.substring(0, 7);
-                    const plan = monthlyPlans[monthKey] || { income: 0, fixed: 0 };
+                    const plan = monthlyPlans[d.substring(0, 7)] || { income: 0, fixed: 0 };
                     runningTotal += (parseInt(plan.income) || 0) - (parseInt(plan.fixed) || 0);
                 }
                 runningTotal += (parseInt(savings[d]) || 0) + (parseInt(fixedExpenses[d]) || 0);
                 return runningTotal;
             });
-
-            myChart = new Chart(ctx, { 
-                type: 'line', 
-                data: { labels: allDates, datasets: [{ label: '総資産推移', data, borderColor: '#2196f3', fill: true }] }, 
-                options: { maintainAspectRatio: false, responsive: true } 
-            });
+            myChart = new Chart(ctx, { type: 'line', data: { labels: allDates, datasets: [{ label: '総資産推移', data, borderColor: '#2196f3' }] }, options: { responsive: true, maintainAspectRatio: false } });
         }
 
-        function saveMonthlyData() {
-            const y = cur.getFullYear(), m = cur.getMonth();
-            const monthKey = `${y}-${(m+1).toString().padStart(2,'0')}`;
-            monthlyPlans[monthKey] = {
-                income: parseInt(document.getElementById('monthlyIncome').value) || 0,
-                fixed: parseInt(document.getElementById('monthlyFixed').value) || 0
-            };
-            localStorage.setItem('myMonthlyPlans', JSON.stringify(monthlyPlans));
-            render();
-        }
-
+        // 保存系
         function saveAll() {
             config.targetGoal = document.getElementById('targetGoal').value;
             localStorage.setItem('myConfig', JSON.stringify(config));
             render();
         }
-
+        function saveMonthlyData() {
+            const monthKey = `${cur.getFullYear()}-${(cur.getMonth()+1).toString().padStart(2,'0')}`;
+            monthlyPlans[monthKey] = { income: parseInt(document.getElementById('monthlyIncome').value)||0, fixed: parseInt(document.getElementById('monthlyFixed').value)||0 };
+            localStorage.setItem('myMonthlyPlans', JSON.stringify(monthlyPlans));
+            render();
+        }
         function saveData() {
             const val = document.getElementById('amountInput').value;
-            const isFixed = document.getElementById('isFixed').checked;
-            if(isFixed) { fixedExpenses[selectedDate] = val; delete savings[selectedDate]; }
+            if(document.getElementById('isFixed').checked) { fixedExpenses[selectedDate] = val; delete savings[selectedDate]; }
             else { savings[selectedDate] = val; delete fixedExpenses[selectedDate]; }
             localStorage.setItem('mySavings', JSON.stringify(savings));
             localStorage.setItem('myFixedExpenses', JSON.stringify(fixedExpenses));
             render();
         }
-
+        function changeMonth(n) { cur.setDate(1); cur.setMonth(cur.getMonth() + n); render(); }
+        
+        // ファイル入出力
         function exportFile() {
             const blob = new Blob([JSON.stringify({savings, fixedExpenses, monthlyPlans, config})], {type:'application/json'});
             const a = document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='backup.json'; a.click();
         }
-
         function importFile(e) {
             const r = new FileReader();
             r.onload = (res) => {
                 const d = JSON.parse(res.target.result);
-                savings = d.savings || {}; fixedExpenses = d.fixedExpenses || {}; monthlyPlans = d.monthlyPlans || {}; config = d.config || config;
-                localStorage.setItem('mySavings', JSON.stringify(savings));
-                localStorage.setItem('myFixedExpenses', JSON.stringify(fixedExpenses));
-                localStorage.setItem('my
+                savings=d.savings; fixedExpenses=d.fixedExpenses; monthlyPlans=d.monthlyPlans; config=d.config;
+                localStorage.setItem('mySavings', JSON.stringify(savings)); localStorage.setItem('myFixedExpenses', JSON.stringify(fixedExpenses)); localStorage.setItem('myMonthlyPlans', JSON.stringify(monthlyPlans)); localStorage.setItem('myConfig', JSON.stringify(config));
+                render();
+            };
+            r.readAsText(e.target.files[0]);
+        }
+        render();
+    </script>
+</body>
+</html>
