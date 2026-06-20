@@ -9,9 +9,9 @@
         .header { display: flex; justify-content: space-between; align-items: center; font-weight: bold; margin-bottom: 10px; }
         .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-bottom: 10px; }
         .cell { background: #fff; border-radius: 4px; padding: 8px 2px; text-align: center; cursor: pointer; font-size: 0.85em; border: 1px solid #ddd; }
-        .cell.today { border: 2px solid #2196f3; }
         .amount { color: #d32f2f; font-weight: bold; display: block; font-size: 0.8em; }
         .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 10px; }
+        .file-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 15px; }
         input, button { padding: 8px; border-radius: 4px; border: 1px solid #ccc; }
         button { background: #4caf50; color: white; border: none; cursor: pointer; }
         #balanceDisplay { font-size: 1.2em; font-weight: bold; margin: 10px 0; color: #333; text-align: center; }
@@ -29,6 +29,11 @@
         <input type="number" id="initialBalance" placeholder="初期資金" onchange="saveConfig()">
         <input type="number" id="amountInput" placeholder="本日の支出">
         <button onclick="saveData()">記録</button>
+    </div>
+    <div class="file-controls">
+        <button onclick="exportFile()" style="background:#2196f3">📥 ファイル保存</button>
+        <button onclick="document.getElementById('fileInput').click()" style="background:#2196f3">📤 ファイル読込</button>
+        <input type="file" id="fileInput" style="display:none" onchange="importFile(event)">
     </div>
     <div id="balanceDisplay">現在の予想資金: -</div>
     <canvas id="myChart"></canvas>
@@ -59,7 +64,6 @@
                 const dateStr = `${year}-${(month + 1).toString().padStart(2, '0')}-${i.toString().padStart(2, '0')}`;
                 const val = savings[dateStr] || 0;
                 totalSpent += parseInt(val);
-                
                 const div = document.createElement('div');
                 div.className = 'cell';
                 div.innerHTML = `${i}<span class="amount">${val > 0 ? val : ''}</span>`;
@@ -76,7 +80,6 @@
             const month = currentViewDate.getMonth();
             const labels = [], data = [];
             let currentBalance = config.initialBalance;
-            
             const daysInMonth = new Date(year, month + 1, 0).getDate();
             for(let i=1; i<=daysInMonth; i++) {
                 labels.push(i);
@@ -84,13 +87,35 @@
                 currentBalance -= (savings[dateStr] ? parseInt(savings[dateStr]) : 0);
                 data.push(currentBalance);
             }
-
             if(window.myChart) window.myChart.destroy();
             window.myChart = new Chart(ctx, {
                 type: 'line',
                 data: { labels, datasets: [{ label: '資金推移', data, borderColor: '#2196f3', tension: 0.2, fill: true, backgroundColor: 'rgba(33, 150, 243, 0.1)' }] },
                 options: { responsive: true }
             });
+        }
+
+        function exportFile() {
+            const data = { savings, config };
+            const blob = new Blob([JSON.stringify(data)], {type: 'application/json'});
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'savings_backup.json';
+            a.click();
+        }
+
+        function importFile(e) {
+            const reader = new FileReader();
+            reader.onload = (res) => {
+                const data = JSON.parse(res.target.result);
+                savings = data.savings;
+                config = data.config;
+                localStorage.setItem('mySavings', JSON.stringify(savings));
+                localStorage.setItem('myConfig', JSON.stringify(config));
+                document.getElementById('initialBalance').value = config.initialBalance;
+                renderCalendar();
+            };
+            reader.readAsText(e.target.files[0]);
         }
 
         let selectedDate = new Date().toISOString().split('T')[0];
