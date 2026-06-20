@@ -2,84 +2,76 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>濡羽の貯金管理</title>
     <style>
-        body { font-family: sans-serif; padding: 10px; margin: 0; font-size: 14px; }
-        #log-area { height: 80px; background: #f9f9f9; border: 1px solid #ddd; overflow-y: scroll; padding: 10px; margin-bottom: 10px; }
-        .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 10px; }
+        body { font-family: sans-serif; padding: 15px; background: #f0f2f5; }
+        .header { text-align: center; font-weight: bold; font-size: 1.2em; margin-bottom: 10px; }
+        #log-area { height: 60px; background: #fff; border-radius: 8px; border: 1px solid #ccc; padding: 10px; margin-bottom: 15px; font-size: 0.9em; overflow-y: auto; }
         .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
-        .cell { border: 1px solid #ccc; padding: 5px; text-align: center; cursor: pointer; }
-        .amount { color: blue; display: block; font-size: 0.7em; }
+        .cell { background: #fff; border-radius: 4px; padding: 10px 5px; text-align: center; cursor: pointer; border: 1px solid #ddd; transition: 0.2s; }
+        .cell:hover { background: #e3f2fd; }
+        .cell.today { border: 2px solid #2196f3; background: #e3f2fd; }
+        .amount { color: #d32f2f; font-weight: bold; display: block; font-size: 0.8em; margin-top: 5px; }
+        .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 15px; }
+        button { padding: 10px; cursor: pointer; border: none; border-radius: 5px; background: #4caf50; color: white; }
     </style>
 </head>
 <body>
-    <h3>貯金ログ</h3>
-    <div id="log-area"></div>
-    
+    <div class="header" id="currentMonth"></div>
+    <div id="log-area">記録を選択してください</div>
+    <div id="calendar" class="calendar-grid"></div>
     <div class="controls">
-        <input type="number" id="amountInput" placeholder="金額">
-        <button onclick="saveData()">記録</button>
-        <button onclick="exportFile()">📥 ファイル保存</button>
-        <button onclick="document.getElementById('fileInput').click()">📤 ファイル読込</button>
+        <input type="number" id="amountInput" placeholder="金額(円)">
+        <button onclick="saveData()">記録する</button>
+        <button onclick="exportFile()">保存</button>
+        <button onclick="document.getElementById('fileInput').click()">読込</button>
         <input type="file" id="fileInput" style="display:none" onchange="importFile(event)">
     </div>
 
-    <div id="calendar" class="calendar-grid"></div>
-
     <script>
-        let selectedDate = null;
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = now.getMonth() + 1;
+        document.getElementById('currentMonth').innerText = `${year}年 ${month}月`;
+        
         let savings = JSON.parse(localStorage.getItem('mySavings')) || {};
-
-        function logMessage(msg) {
-            const time = new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
-            document.getElementById('log-area').innerHTML += `<div>[${time}] ${msg}</div>`;
-        }
-
-        function saveData() {
-            const amount = document.getElementById('amountInput').value;
-            if (!selectedDate || !amount) return alert("日付と金額を選択してください");
-            savings[selectedDate] = amount;
-            localStorage.setItem('mySavings', JSON.stringify(savings));
-            logMessage(`${selectedDate} に ${amount}円 記録`);
-            renderCalendar();
-        }
-
-        // ファイルとして保存
-        function exportFile() {
-            const blob = new Blob([JSON.stringify(savings)], {type: 'application/json'});
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'savings_backup.json';
-            a.click();
-            logMessage("データをファイルとして保存しました");
-        }
-
-        // ファイルを読み込み
-        function importFile(event) {
-            const file = event.target.files[0];
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                savings = JSON.parse(e.target.result);
-                localStorage.setItem('mySavings', JSON.stringify(savings));
-                renderCalendar();
-                logMessage("データをファイルから復元しました");
-            };
-            reader.readAsText(file);
-        }
+        let selectedDate = null;
 
         function renderCalendar() {
             const cal = document.getElementById('calendar');
+            const daysInMonth = new Date(year, month, 0).getDate();
+            const todayStr = now.toISOString().split('T')[0];
             cal.innerHTML = '';
-            for (let i = 1; i <= 30; i++) {
-                const dateKey = `2026-06-${i.toString().padStart(2, '0')}`;
+            for (let i = 1; i <= daysInMonth; i++) {
+                const dateStr = `${year}-${month.toString().padStart(2, '0')}-${i.toString().padStart(2, '0')}`;
                 const div = document.createElement('div');
-                div.className = 'cell';
-                div.innerHTML = `${i}<span class="amount">${savings[dateKey] || ''}</span>`;
-                div.onclick = () => { selectedDate = dateKey; logMessage(`${i}日を選択中`); };
+                div.className = `cell ${dateStr === todayStr ? 'today' : ''}`;
+                div.innerHTML = `${i}<span class="amount">${savings[dateStr] || ''}</span>`;
+                div.onclick = () => { selectedDate = dateStr; document.getElementById('log-area').innerText = `${dateStr} を選択中`; };
                 cal.appendChild(div);
             }
+        }
+
+        function saveData() {
+            const val = document.getElementById('amountInput').value;
+            if (!selectedDate || !val) return alert("日付と金額を入力");
+            savings[selectedDate] = val;
+            localStorage.setItem('mySavings', JSON.stringify(savings));
+            renderCalendar();
+        }
+
+        function exportFile() {
+            const blob = new Blob([JSON.stringify(savings)], {type: 'application/json'});
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `savings_${year}${month}.json`;
+            a.click();
+        }
+
+        function importFile(e) {
+            const reader = new FileReader();
+            reader.onload = (res) => { savings = JSON.parse(res.target.result); localStorage.setItem('mySavings', JSON.stringify(savings)); renderCalendar(); };
+            reader.readAsText(e.target.files[0]);
         }
         
         renderCalendar();
