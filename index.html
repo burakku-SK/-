@@ -9,7 +9,7 @@
         .header { display: flex; justify-content: space-between; align-items: center; font-weight: bold; margin-bottom: 10px; }
         .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; margin: 10px 0; }
         .cell { background: #fff; padding: 5px; text-align: center; border: 1px solid #ddd; font-size: 0.7em; cursor: pointer; height: 45px; position: relative;}
-        .cell-fixed { background: #fff0f0; border-color: #ffcdd2; } /* 固定費は少し色を変える */
+        .cell-fixed { background: #fff0f0; border-color: #ffcdd2; }
         .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 10px; }
         button { padding: 8px; border-radius: 4px; border: none; background: #2196f3; color: white; cursor: pointer; }
         .info-box { background: #fff; padding: 10px; border-radius: 8px; margin-bottom: 10px; font-size: 0.9em; }
@@ -47,21 +47,25 @@
 
     <script>
         let cur = new Date();
-        // 通常の支出・収入
         let savings = JSON.parse(localStorage.getItem('mySavings')) || {};
-        // 固定支出
         let fixedExpenses = JSON.parse(localStorage.getItem('myFixedExpenses')) || {};
         let config = JSON.parse(localStorage.getItem('myConfig')) || { targetGoal: 1000000, monthlyBudget: 100000 };
         document.getElementById('targetGoal').value = config.targetGoal;
         document.getElementById('monthlyBudget').value = config.monthlyBudget;
         let selectedDate = new Date().toISOString().split('T')[0];
 
+        function changeMonth(n) {
+            // 1日にリセットしてから月を変更する（バグ対策）
+            cur.setDate(1);
+            cur.setMonth(cur.getMonth() + n);
+            render();
+        }
+
         function render() {
             const y = cur.getFullYear(), m = cur.getMonth();
             document.getElementById('currentMonth').innerText = `${y}年 ${m + 1}月`;
             const cal = document.getElementById('calendar'); cal.innerHTML = '';
             
-            // 1. 総資産の計算（savings + fixedExpenses）
             let total = 0;
             [savings, fixedExpenses].forEach(obj => {
                 Object.values(obj).forEach(v => { const n = parseInt(v); if (!isNaN(n)) total += n; });
@@ -69,7 +73,6 @@
             const goal = parseInt(config.targetGoal) || 1;
             document.getElementById('totalStatus').innerText = `総資産: ${total}円 (目標達成率: ${((total/goal)*100).toFixed(1)}%)`;
 
-            // 2. 今月の支出計算（savingsのみ。fixedは無視）
             let monthSpent = 0;
             const prefix = `${y}-${(m+1).toString().padStart(2,'0')}`;
             Object.keys(savings).forEach(d => {
@@ -82,7 +85,6 @@
             const diff = budget - monthSpent;
             document.getElementById('monthStatus').innerText = `今月の支出(固定費除く): ${monthSpent}円 / 残り予算: ${diff}円`;
 
-            // カレンダー構築
             const days = new Date(y, m + 1, 0).getDate();
             for(let i=1; i<=days; i++){
                 const d = `${y}-${(m+1).toString().padStart(2,'0')}-${i.toString().padStart(2,'0')}`;
@@ -106,7 +108,6 @@
 
         let myChart;
         function updateChart() {
-            // 全データを統合してソート
             const allDates = [...new Set([...Object.keys(savings), ...Object.keys(fixedExpenses)])].sort();
             let runningTotal = 0;
             const data = allDates.map(d => {
@@ -114,7 +115,6 @@
                 runningTotal += val;
                 return runningTotal;
             });
-            
             const ctx = document.getElementById('myChart').getContext('2d');
             if(myChart) myChart.destroy();
             myChart = new Chart(ctx, { 
@@ -134,8 +134,6 @@
         function saveData() {
             const val = document.getElementById('amountInput').value;
             const isFixed = document.getElementById('isFixed').checked;
-            
-            // 既存のデータをクリアしてから保存
             if(isFixed) {
                 fixedExpenses[selectedDate] = val;
                 delete savings[selectedDate];
