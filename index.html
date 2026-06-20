@@ -8,7 +8,8 @@
         body { font-family: sans-serif; padding: 10px; background: #f0f2f5; }
         .header { display: flex; justify-content: space-between; align-items: center; font-weight: bold; margin-bottom: 10px; }
         .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; margin: 10px 0; }
-        .cell { background: #fff; padding: 5px; text-align: center; border: 1px solid #ddd; font-size: 0.7em; cursor: pointer; height: 40px; }
+        .cell { background: #fff; padding: 5px; text-align: center; border: 1px solid #ddd; font-size: 0.7em; cursor: pointer; height: 45px; position: relative;}
+        .cell-fixed { background: #fff0f0; border-color: #ffcdd2; } /* 固定費は少し色を変える */
         .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 10px; }
         button { padding: 8px; border-radius: 4px; border: none; background: #2196f3; color: white; cursor: pointer; }
         .info-box { background: #fff; padding: 10px; border-radius: 8px; margin-bottom: 10px; font-size: 0.9em; }
@@ -31,8 +32,9 @@
         <div id="monthStatus" style="font-weight:bold; margin-top:5px; color:#d32f2f"></div>
     </div>
 
-    <div class="controls">
+    <div class="controls" style="grid-template-columns: 1fr 1fr auto;">
         <input type="number" id="amountInput" placeholder="金額(+/ -)">
+        <label><input type="checkbox" id="isFixed"> 固定支出</label>
         <button onclick="saveData()" style="background:#4caf50">記録</button>
         <button onclick="exportFile()">📥保存</button>
         <button onclick="document.getElementById('fileInput').click()">📤読込</button>
@@ -45,7 +47,10 @@
 
     <script>
         let cur = new Date();
+        // 通常の支出・収入
         let savings = JSON.parse(localStorage.getItem('mySavings')) || {};
+        // 固定支出
+        let fixedExpenses = JSON.parse(localStorage.getItem('myFixedExpenses')) || {};
         let config = JSON.parse(localStorage.getItem('myConfig')) || { targetGoal: 1000000, monthlyBudget: 100000 };
         document.getElementById('targetGoal').value = config.targetGoal;
         document.getElementById('monthlyBudget').value = config.monthlyBudget;
@@ -56,37 +61,44 @@
             document.getElementById('currentMonth').innerText = `${y}年 ${m + 1}月`;
             const cal = document.getElementById('calendar'); cal.innerHTML = '';
             
-            // 1. 総資産の計算（全期間の合計）
+            // 1. 総資産の計算（savings + fixedExpenses）
             let total = 0;
-            Object.values(savings).forEach(v => { const n = parseInt(v); if (!isNaN(n)) total += n; });
+            [savings, fixedExpenses].forEach(obj => {
+                Object.values(obj).forEach(v => { const n = parseInt(v); if (!isNaN(n)) total += n; });
+            });
             const goal = parseInt(config.targetGoal) || 1;
             document.getElementById('totalStatus').innerText = `総資産: ${total}円 (目標達成率: ${((total/goal)*100).toFixed(1)}%)`;
 
-            // 2. 今月の支出計算（マイナスのみ合計）
+            // 2. 今月の支出計算（savingsのみ。fixedは無視）
             let monthSpent = 0;
             const prefix = `${y}-${(m+1).toString().padStart(2,'0')}`;
             Object.keys(savings).forEach(d => {
                 if(d.startsWith(prefix)) {
                     const n = parseInt(savings[d]);
-                    if(!isNaN(n) && n < 0) { // マイナスのみカウント
-                        monthSpent += Math.abs(n); 
-                    }
+                    if(!isNaN(n) && n < 0) monthSpent += Math.abs(n); 
                 }
             });
             const budget = parseInt(config.monthlyBudget) || 0;
             const diff = budget - monthSpent;
-            document.getElementById('monthStatus').innerText = `今月の支出合計: ${monthSpent}円 / 残り予算: ${diff}円`;
+            document.getElementById('monthStatus').innerText = `今月の支出(固定費除く): ${monthSpent}円 / 残り予算: ${diff}円`;
 
             // カレンダー構築
             const days = new Date(y, m + 1, 0).getDate();
             for(let i=1; i<=days; i++){
                 const d = `${y}-${(m+1).toString().padStart(2,'0')}-${i.toString().padStart(2,'0')}`;
-                const val = savings[d] || '';
+                const val = savings[d] !== undefined ? savings[d] : (fixedExpenses[d] !== undefined ? fixedExpenses[d] : '');
+                const isFixed = fixedExpenses[d] !== undefined;
+                
                 const div = document.createElement('div');
-                div.className = 'cell';
-                div.style.backgroundColor = (d === selectedDate) ? '#e3f2fd' : '#fff';
+                div.className = 'cell ' + (isFixed ? 'cell-fixed' : '');
+                div.style.backgroundColor = (d === selectedDate) ? '#e3f2fd' : '';
                 div.innerHTML = `${i}<br><span style="color:${parseInt(val)>=0?'blue':'red'}">${val}</span>`;
-                div.onclick = () => { selectedDate = d; document.getElementById('amountInput').value = val || ''; render(); };
+                div.onclick = () => { 
+                    selectedDate = d; 
+                    document.getElementById('amountInput').value = val || '';
+                    document.getElementById('isFixed').checked = isFixed;
+                    render();
+                };
                 cal.appendChild(div);
             }
             updateChart();
@@ -94,44 +106,62 @@
 
         let myChart;
         function updateChart() {
-            const sortedDates = Object.keys(savings).sort();
+            // 全データを統合してソート
+            const allDates = [...new Set([...Object.keys(savings), ...Object.keys(fixedExpenses)])].sort();
             let runningTotal = 0;
-            const data = sortedDates.map(d => {
-                const val = parseInt(savings[d]) || 0;
+            const data = allDates.map(d => {
+                const val = (parseInt(savings[d]) || 0) + (parseInt(fixedExpenses[d]) || 0);
                 runningTotal += val;
                 return runningTotal;
             });
+            
             const ctx = document.getElementById('myChart').getContext('2d');
             if(myChart) myChart.destroy();
             myChart = new Chart(ctx, { 
                 type: 'line', 
-                data: { labels: sortedDates, datasets: [{ label: '総資産推移', data, borderColor: '#2196f3', fill: true }] },
+                data: { labels: allDates, datasets: [{ label: '総資産推移', data, borderColor: '#2196f3', fill: true }] },
                 options: { maintainAspectRatio: false }
             });
         }
 
-        function changeMonth(n) { cur.setMonth(cur.getMonth() + n); render(); }
         function saveAll() {
             config.targetGoal = document.getElementById('targetGoal').value;
             config.monthlyBudget = document.getElementById('monthlyBudget').value;
             localStorage.setItem('myConfig', JSON.stringify(config));
             render();
         }
+
         function saveData() {
-            savings[selectedDate] = document.getElementById('amountInput').value;
+            const val = document.getElementById('amountInput').value;
+            const isFixed = document.getElementById('isFixed').checked;
+            
+            // 既存のデータをクリアしてから保存
+            if(isFixed) {
+                fixedExpenses[selectedDate] = val;
+                delete savings[selectedDate];
+            } else {
+                savings[selectedDate] = val;
+                delete fixedExpenses[selectedDate];
+            }
             localStorage.setItem('mySavings', JSON.stringify(savings));
+            localStorage.setItem('myFixedExpenses', JSON.stringify(fixedExpenses));
             render();
         }
+
         function exportFile() {
-            const blob = new Blob([JSON.stringify({savings, config})], {type:'application/json'});
+            const blob = new Blob([JSON.stringify({savings, fixedExpenses, config})], {type:'application/json'});
             const a = document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='backup.json'; a.click();
         }
+
         function importFile(e) {
             const r = new FileReader();
             r.onload = (res) => {
                 const d = JSON.parse(res.target.result);
-                savings = d.savings; config = d.config;
+                savings = d.savings || {};
+                fixedExpenses = d.fixedExpenses || {};
+                config = d.config || config;
                 localStorage.setItem('mySavings', JSON.stringify(savings));
+                localStorage.setItem('myFixedExpenses', JSON.stringify(fixedExpenses));
                 localStorage.setItem('myConfig', JSON.stringify(config));
                 render();
             };
