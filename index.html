@@ -6,8 +6,8 @@
     <title>濡羽の貯金管理</title>
     <style>
         body { font-family: sans-serif; padding: 10px; margin: 0; font-size: 14px; }
-        #log-area { height: 100px; background: #f9f9f9; border: 1px solid #ddd; overflow-y: scroll; padding: 10px; margin-bottom: 10px; }
-        .controls { display: flex; gap: 5px; margin-bottom: 10px; }
+        #log-area { height: 80px; background: #f9f9f9; border: 1px solid #ddd; overflow-y: scroll; padding: 10px; margin-bottom: 10px; }
+        .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 10px; }
         .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
         .cell { border: 1px solid #ccc; padding: 5px; text-align: center; cursor: pointer; }
         .amount { color: blue; display: block; font-size: 0.7em; }
@@ -18,10 +18,11 @@
     <div id="log-area"></div>
     
     <div class="controls">
-        <input type="number" id="amountInput" placeholder="金額" style="width: 80px;">
+        <input type="number" id="amountInput" placeholder="金額">
         <button onclick="saveData()">記録</button>
-        <button onclick="exportData()">保存(コピー)</button>
-        <button onclick="importData()">読込(貼付)</button>
+        <button onclick="exportFile()">📥 ファイル保存</button>
+        <button onclick="document.getElementById('fileInput').click()">📤 ファイル読込</button>
+        <input type="file" id="fileInput" style="display:none" onchange="importFile(event)">
     </div>
 
     <div id="calendar" class="calendar-grid"></div>
@@ -40,24 +41,32 @@
             if (!selectedDate || !amount) return alert("日付と金額を選択してください");
             savings[selectedDate] = amount;
             localStorage.setItem('mySavings', JSON.stringify(savings));
-            logMessage(`${selectedDate} に ${amount}円 を記録`);
+            logMessage(`${selectedDate} に ${amount}円 記録`);
             renderCalendar();
         }
 
-        function exportData() {
-            const dataStr = JSON.stringify(savings);
-            navigator.clipboard.writeText(dataStr);
-            alert("データをクリップボードにコピーしました！メモ帳などに保存してください。");
+        // ファイルとして保存
+        function exportFile() {
+            const blob = new Blob([JSON.stringify(savings)], {type: 'application/json'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'savings_backup.json';
+            a.click();
+            logMessage("データをファイルとして保存しました");
         }
 
-        function importData() {
-            const dataStr = prompt("保存していたデータを貼り付けてください：");
-            if (dataStr) {
-                savings = JSON.parse(dataStr);
+        // ファイルを読み込み
+        function importFile(event) {
+            const file = event.target.files[0];
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                savings = JSON.parse(e.target.result);
                 localStorage.setItem('mySavings', JSON.stringify(savings));
                 renderCalendar();
-                logMessage("データを復元しました");
-            }
+                logMessage("データをファイルから復元しました");
+            };
+            reader.readAsText(file);
         }
 
         function renderCalendar() {
@@ -74,7 +83,6 @@
         }
         
         renderCalendar();
-        logMessage("2026-06-20 15:28: 起動完了");
     </script>
 </body>
 </html>
