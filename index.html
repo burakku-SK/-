@@ -15,6 +15,8 @@
         input, button { padding: 8px; border-radius: 4px; border: 1px solid #ccc; }
         button { background: #4caf50; color: white; border: none; cursor: pointer; }
         #balanceDisplay { font-size: 1.2em; font-weight: bold; margin: 10px 0; color: #333; text-align: center; }
+        /* グラフエリアを確保 */
+        .chart-container { position: relative; height: 300px; width: 100%; margin-top: 20px; }
     </style>
 </head>
 <body>
@@ -36,7 +38,10 @@
         <input type="file" id="fileInput" style="display:none" onchange="importFile(event)">
     </div>
     <div id="balanceDisplay">現在の予想資金: -</div>
-    <canvas id="myChart"></canvas>
+    
+    <div class="chart-container">
+        <canvas id="myChart"></canvas>
+    </div>
 
     <script>
         let currentViewDate = new Date();
@@ -74,6 +79,7 @@
             updateChart();
         }
 
+        let myChart = null;
         function updateChart() {
             const ctx = document.getElementById('myChart').getContext('2d');
             const year = currentViewDate.getFullYear();
@@ -81,17 +87,19 @@
             const labels = [], data = [];
             let currentBalance = config.initialBalance;
             const daysInMonth = new Date(year, month + 1, 0).getDate();
+            
             for(let i=1; i<=daysInMonth; i++) {
                 labels.push(i);
                 const dateStr = `${year}-${(month+1).toString().padStart(2, '0')}-${i.toString().padStart(2, '0')}`;
                 currentBalance -= (savings[dateStr] ? parseInt(savings[dateStr]) : 0);
                 data.push(currentBalance);
             }
-            if(window.myChart) window.myChart.destroy();
-            window.myChart = new Chart(ctx, {
+
+            if(myChart) myChart.destroy();
+            myChart = new Chart(ctx, {
                 type: 'line',
                 data: { labels, datasets: [{ label: '資金推移', data, borderColor: '#2196f3', tension: 0.2, fill: true, backgroundColor: 'rgba(33, 150, 243, 0.1)' }] },
-                options: { responsive: true }
+                options: { responsive: true, maintainAspectRatio: false }
             });
         }
 
@@ -126,7 +134,8 @@
             renderCalendar();
         }
         
-        renderCalendar();
+        // 初回ロード時に確実にグラフが出るように設定
+        window.onload = renderCalendar;
     </script>
 </body>
 </html>
