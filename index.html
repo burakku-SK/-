@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>濡羽の資産管理</title>
+    <title>濡羽の家計管理</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body { font-family: sans-serif; padding: 10px; background: #f0f2f5; font-size: 14px; }
@@ -15,6 +15,8 @@
         .controls { background: #fff; padding: 10px; border-radius: 8px; margin-bottom: 10px; }
         input { padding: 5px; margin-bottom: 5px; width: 90%; }
         button { padding: 8px; border-radius: 4px; border: none; background: #2196f3; color: white; cursor: pointer; width: 100%; margin-top: 5px; }
+        table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 0.9em; }
+        th, td { border: 1px solid #ddd; padding: 5px; text-align: center; }
         .list-item { display: flex; justify-content: space-between; border-bottom: 1px solid #eee; padding: 5px 0; font-size: 0.9em; }
         .chart-wrapper { height: 200px; background: #fff; padding: 10px; border-radius: 8px; margin-top: 10px; }
     </style>
@@ -33,10 +35,15 @@
     </div>
 
     <div class="info-box">
-        <strong>今月の予算管理</strong>
-        <div id="monthlyBudgetStatus" style="margin: 5px 0; font-weight: bold; color: #d32f2f;"></div>
-        <div style="font-size: 0.9em;">今月の予算: <input type="number" id="monthlyBudgetInput" style="width:80px">円</div>
-        <button onclick="saveMonthlyData()" style="background:#4caf50">予算を保存</button>
+        <strong>月間収支管理</strong>
+        <table>
+            <tr><th>項目</th><th>金額</th></tr>
+            <tr><td>収入</td><td><input type="number" id="monthlyIncome" style="width:80px"></td></tr>
+            <tr><td>固定費</td><td><input type="number" id="monthlyFixed" style="width:80px"></td></tr>
+            <tr><td><strong>予算設定</strong></td><td><input type="number" id="monthlyBudget" style="width:80px"></td></tr>
+        </table>
+        <div id="monthlyBudgetStatus" style="font-weight: bold; color: #d32f2f; margin-top:5px;"></div>
+        <button onclick="saveMonthlyData()" style="background:#4caf50">収支・予算を保存</button>
     </div>
 
     <div class="calendar-grid" id="calendar"></div>
@@ -56,7 +63,7 @@
     <script>
         let cur = new Date();
         let dailyExpenses = JSON.parse(localStorage.getItem('dailyExpenses')) || {};
-        let monthlyBudgets = JSON.parse(localStorage.getItem('monthlyBudgets')) || {}; // 予算用
+        let monthlyPlans = JSON.parse(localStorage.getItem('monthlyPlans')) || {};
         let config = JSON.parse(localStorage.getItem('myConfig')) || { targetGoal: 2500000 };
         let selectedDate = new Date().toISOString().split('T')[0];
         let myChart = null;
@@ -68,24 +75,26 @@
             document.getElementById('currentMonth').innerText = `${y}年 ${m + 1}月`;
             document.getElementById('selectedDateTitle').innerText = `${selectedDate} の支出`;
 
-            // 【全体進捗計算】(総資産的なものとして、とりあえず単純に支出の合計を管理)
-            let totalExpenses = 0;
-            Object.values(dailyExpenses).flat().forEach(e => totalExpenses += (parseInt(e.amount)||0));
-            const percent = ((totalExpenses / config.targetGoal) * 100).toFixed(1);
-            document.getElementById('totalStatus').innerText = `支出累計: ${totalExpenses.toLocaleString()}円 (${percent}%)`;
+            // 1. 全体資産計算 (全収入 - 全固定費 - 全日次支出)
+            let totalIncome = 0; let totalFixed = 0; let totalDaily = 0;
+            Object.values(monthlyPlans).forEach(p => { totalIncome += (parseInt(p.income)||0); totalFixed += (parseInt(p.fixed)||0); });
+            Object.values(dailyExpenses).flat().forEach(e => totalDaily += (parseInt(e.amount)||0));
+            const totalAssets = totalIncome - totalFixed - totalDaily;
+            const percent = ((totalAssets / config.targetGoal) * 100).toFixed(1);
+            document.getElementById('totalStatus').innerText = `総資産: ${totalAssets.toLocaleString()}円 (${percent}%)`;
 
-            // 【今月の残り予算】
-            const budget = monthlyBudgets[monthKey] || 0;
-            document.getElementById('monthlyBudgetInput').value = budget;
+            // 2. 今月の収支表と残り予算計算
+            const plan = monthlyPlans[monthKey] || { income: 0, fixed: 0, budget: 0 };
+            document.getElementById('monthlyIncome').value = plan.income;
+            document.getElementById('monthlyFixed').value = plan.fixed;
+            document.getElementById('monthlyBudget').value = plan.budget;
             
             let monthDailyTotal = 0;
             Object.keys(dailyExpenses).forEach(date => {
-                if(date.startsWith(monthKey)) {
-                    dailyExpenses[date].forEach(e => monthDailyTotal += (parseInt(e.amount)||0));
-                }
+                if(date.startsWith(monthKey)) dailyExpenses[date].forEach(e => monthDailyTotal += (parseInt(e.amount)||0));
             });
-            const remaining = budget - monthDailyTotal;
-            document.getElementById('monthlyBudgetStatus').innerText = `残り予算: ${remaining.toLocaleString()}円`;
+            const remaining = plan.budget - monthDailyTotal;
+            document.getElementById('monthlyBudgetStatus').innerText = `今月の残り予算: ${remaining.toLocaleString()}円`;
 
             updateCalendar(y, m);
             updateList();
@@ -132,8 +141,12 @@
 
         function saveMonthlyData() {
             const monthKey = `${cur.getFullYear()}-${(cur.getMonth()+1).toString().padStart(2,'0')}`;
-            monthlyBudgets[monthKey] = parseInt(document.getElementById('monthlyBudgetInput').value) || 0;
-            localStorage.setItem('monthlyBudgets', JSON.stringify(monthlyBudgets));
+            monthlyPlans[monthKey] = { 
+                income: parseInt(document.getElementById('monthlyIncome').value)||0, 
+                fixed: parseInt(document.getElementById('monthlyFixed').value)||0,
+                budget: parseInt(document.getElementById('monthlyBudget').value)||0 
+            };
+            localStorage.setItem('monthlyPlans', JSON.stringify(monthlyPlans));
             render();
         }
 
