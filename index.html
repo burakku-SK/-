@@ -9,6 +9,7 @@
         body { font-family: sans-serif; padding: 10px; background: #f0f2f5; font-size: 14px; }
         .header { display: flex; justify-content: space-between; align-items: center; font-weight: bold; margin-bottom: 10px; }
         .info-box { background: #fff; padding: 10px; border-radius: 8px; margin-bottom: 10px; }
+        .status-card { background: #e3f2fd; padding: 10px; border-radius: 8px; margin-bottom: 10px; border: 1px solid #bbdefb; }
         .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; margin: 10px 0; }
         .cell { background: #fff; padding: 5px; text-align: center; border: 1px solid #ddd; height: 40px; cursor: pointer; }
         .controls { background: #fff; padding: 10px; border-radius: 8px; margin-bottom: 10px; }
@@ -28,18 +29,20 @@
         <button onclick="changeMonth(1)" style="width: auto;">翌月 ▶</button>
     </div>
 
+    <div class="status-card">
+        <div style="font-size: 0.8em; color: #555;">目標金額: <input type="number" id="targetGoal" onchange="saveAll()" style="width:80px; font-size:1em;">円</div>
+        <div id="totalStatus" style="font-weight:bold; font-size: 1.2em; color:#1976d2;"></div>
+    </div>
+
     <div class="info-box">
-        <strong>月間収支計画</strong>
+        <strong>今月の収支管理</strong>
+        <div id="monthlyBudgetStatus" style="margin: 5px 0; font-weight: bold; color: #d32f2f;"></div>
         <table>
             <tr><th>項目</th><th>金額</th></tr>
-            <tr><td>収入</td><td><input type="number" id="monthlyIncome" style="width:80px"></td></tr>
+            <tr><td>月間収入</td><td><input type="number" id="monthlyIncome" style="width:80px"></td></tr>
             <tr><td>固定費</td><td><input type="number" id="monthlyFixed" style="width:80px"></td></tr>
-            <tr><td>収支残</td><td id="balanceDisplay">0</td></tr>
         </table>
-        <button onclick="saveMonthlyData()" style="background:#4caf50">収支表を保存</button>
-        <hr style="margin:10px 0">
-        <div>目標金額: <input type="number" id="targetGoal" onchange="saveAll()" style="width:100px">円</div>
-        <div id="totalStatus" style="font-weight:bold; margin-top:5px; color:#1976d2;"></div>
+        <button onclick="saveMonthlyData()" style="background:#4caf50">収支計画を保存</button>
     </div>
 
     <div class="calendar-grid" id="calendar"></div>
@@ -71,20 +74,37 @@
             document.getElementById('currentMonth').innerText = `${y}年 ${m + 1}月`;
             document.getElementById('selectedDateTitle').innerText = `${selectedDate} の支出`;
 
-            // 月間収支表の表示
+            // 【計算1】総資産（全期間の収入 - 全期間の固定費 - 全期間の支出）
+            let totalIncome = 0; let totalFixed = 0; let totalExpenses = 0;
+            Object.values(monthlyPlans).forEach(p => { totalIncome += (parseInt(p.income)||0); totalFixed += (parseInt(p.fixed)||0); });
+            Object.values(dailyExpenses).flat().forEach(e => totalExpenses += (parseInt(e.amount)||0));
+            const totalAssets = totalIncome - totalFixed - totalExpenses;
+            const percent = ((totalAssets / config.targetGoal) * 100).toFixed(1);
+            document.getElementById('totalStatus').innerText = `総資産: ${totalAssets.toLocaleString()}円 (${percent}%)`;
+
+            // 【計算2】今月の残り予算（今月の(収入-固定費) - 今月の支出）
             const plan = monthlyPlans[monthKey] || { income: 0, fixed: 0 };
-            document.getElementById('monthlyIncome').value = plan.income || 0;
-            document.getElementById('monthlyFixed').value = plan.fixed || 0;
-            document.getElementById('balanceDisplay').innerText = (plan.income - plan.fixed);
-
-            // 総資産計算 (月間計画 + 日々の支出)
-            let total = (plan.income - plan.fixed);
-            Object.values(dailyExpenses).flat().forEach(e => total -= parseInt(e.amount) || 0);
+            document.getElementById('monthlyIncome').value = plan.income;
+            document.getElementById('monthlyFixed').value = plan.fixed;
             
-            const percent = ((total / config.targetGoal) * 100).toFixed(1);
-            document.getElementById('totalStatus').innerText = `総資産: ${total}円 (達成率: ${percent}%)`;
+            const monthExpenses = (dailyExpenses[monthKey + '-01'] || []); // ダミーですが、該当月の日々支出合計を出す必要があります
+            // 正確に「今月の支出合計」を出す
+            let monthDailyTotal = 0;
+            Object.keys(dailyExpenses).forEach(date => {
+                if(date.startsWith(monthKey)) {
+                    dailyExpenses[date].forEach(e => monthDailyTotal += (parseInt(e.amount)||0));
+                }
+            });
+            const remaining = (plan.income - plan.fixed) - monthDailyTotal;
+            document.getElementById('monthlyBudgetStatus').innerText = `今月の残り予算: ${remaining.toLocaleString()}円`;
 
-            // カレンダー
+            // カレンダー・リスト・チャート更新
+            updateCalendar(y, m);
+            updateList();
+            updateChart();
+        }
+
+        function updateCalendar(y, m) {
             const cal = document.getElementById('calendar'); cal.innerHTML = '';
             const days = new Date(y, m + 1, 0).getDate();
             for(let i=1; i<=days; i++){
@@ -97,20 +117,13 @@
                 div.onclick = () => { selectedDate = d; render(); };
                 cal.appendChild(div);
             }
+        }
 
-            // 詳細リスト表示
+        function updateList() {
             const list = document.getElementById('expenseList'); list.innerHTML = '';
             (dailyExpenses[selectedDate] || []).forEach((e, idx) => {
                 list.innerHTML += `<div class="list-item">${e.item} : ${e.amount}円 <button onclick="deleteExpense(${idx})" style="width:auto; padding:2px 5px; background:red;">削除</button></div>`;
             });
-            updateChart();
-        }
-
-        function saveMonthlyData() {
-            const monthKey = `${cur.getFullYear()}-${(cur.getMonth()+1).toString().padStart(2,'0')}`;
-            monthlyPlans[monthKey] = { income: parseInt(document.getElementById('monthlyIncome').value)||0, fixed: parseInt(document.getElementById('monthlyFixed').value)||0 };
-            localStorage.setItem('monthlyPlans', JSON.stringify(monthlyPlans));
-            render();
         }
 
         function addExpense() {
@@ -120,8 +133,6 @@
             if(!dailyExpenses[selectedDate]) dailyExpenses[selectedDate] = [];
             dailyExpenses[selectedDate].push({item, amount});
             localStorage.setItem('dailyExpenses', JSON.stringify(dailyExpenses));
-            document.getElementById('itemName').value = '';
-            document.getElementById('amount').value = '';
             render();
         }
 
@@ -131,23 +142,26 @@
             render();
         }
 
+        function saveMonthlyData() {
+            const monthKey = `${cur.getFullYear()}-${(cur.getMonth()+1).toString().padStart(2,'0')}`;
+            monthlyPlans[monthKey] = { income: parseInt(document.getElementById('monthlyIncome').value)||0, fixed: parseInt(document.getElementById('monthlyFixed').value)||0 };
+            localStorage.setItem('monthlyPlans', JSON.stringify(monthlyPlans));
+            render();
+        }
+
         function updateChart() {
             const ctx = document.getElementById('myChart').getContext('2d');
             const dates = Object.keys(dailyExpenses).sort();
             if (myChart) myChart.destroy();
-            
-            let runningTotal = 0;
-            // 月間計画からスタート
-            const currentMonthKey = `${cur.getFullYear()}-${(cur.getMonth()+1).toString().padStart(2,'0')}`;
-            const plan = monthlyPlans[currentMonthKey] || { income: 0, fixed: 0 };
-            runningTotal = (plan.income - plan.fixed);
-
+            // 総資産推移グラフを表示
+            let runningTotal = 0; 
+            // ※簡易的に全期間の収入-固定費を初期値としてグラフ化するのは複雑なため、
+            // 今は「総資産」の数値と「日々の変動」を重視する
             const data = dates.map(d => {
                 runningTotal -= dailyExpenses[d].reduce((sum, e) => sum + parseInt(e.amount), 0);
                 return runningTotal;
             });
-            
-            myChart = new Chart(ctx, { type: 'line', data: { labels: dates, datasets: [{ label: '資産推移', data, borderColor: '#2196f3' }] }, options: { responsive: true, maintainAspectRatio: false } });
+            myChart = new Chart(ctx, { type: 'line', data: { labels: dates, datasets: [{ label: '日々の出費推移', data, borderColor: '#2196f3' }] }, options: { responsive: true, maintainAspectRatio: false } });
         }
 
         function saveAll() {
