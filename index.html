@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>濡羽の家計管理</title>
+    <title>濡羽の資産推移</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body { font-family: sans-serif; padding: 10px; background: #f0f2f5; font-size: 14px; }
@@ -18,7 +18,7 @@
         table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 0.9em; }
         th, td { border: 1px solid #ddd; padding: 5px; text-align: center; }
         .list-item { display: flex; justify-content: space-between; border-bottom: 1px solid #eee; padding: 5px 0; font-size: 0.9em; }
-        .chart-wrapper { height: 200px; background: #fff; padding: 10px; border-radius: 8px; margin-top: 10px; }
+        .chart-wrapper { height: 250px; background: #fff; padding: 10px; border-radius: 8px; margin-top: 10px; }
     </style>
 </head>
 <body>
@@ -75,7 +75,7 @@
             document.getElementById('currentMonth').innerText = `${y}年 ${m + 1}月`;
             document.getElementById('selectedDateTitle').innerText = `${selectedDate} の支出`;
 
-            // 1. 全体資産計算 (全収入 - 全固定費 - 全日次支出)
+            // 総資産計算
             let totalIncome = 0; let totalFixed = 0; let totalDaily = 0;
             Object.values(monthlyPlans).forEach(p => { totalIncome += (parseInt(p.income)||0); totalFixed += (parseInt(p.fixed)||0); });
             Object.values(dailyExpenses).flat().forEach(e => totalDaily += (parseInt(e.amount)||0));
@@ -83,7 +83,7 @@
             const percent = ((totalAssets / config.targetGoal) * 100).toFixed(1);
             document.getElementById('totalStatus').innerText = `総資産: ${totalAssets.toLocaleString()}円 (${percent}%)`;
 
-            // 2. 今月の収支表と残り予算計算
+            // 今月の予算管理
             const plan = monthlyPlans[monthKey] || { income: 0, fixed: 0, budget: 0 };
             document.getElementById('monthlyIncome').value = plan.income;
             document.getElementById('monthlyFixed').value = plan.fixed;
@@ -154,12 +154,35 @@
             const ctx = document.getElementById('myChart').getContext('2d');
             const dates = Object.keys(dailyExpenses).sort();
             if (myChart) myChart.destroy();
-            let runningTotal = 0; 
+            
+            // 全期間の収入・固定費を取得
+            const sortedMonths = Object.keys(monthlyPlans).sort();
+            
             const data = dates.map(d => {
-                runningTotal += dailyExpenses[d].reduce((sum, e) => sum + parseInt(e.amount), 0);
-                return runningTotal;
+                const currentMonth = d.substring(0, 7);
+                // その日まで（その月含む）の累計収入・固定費
+                let runningIncome = 0; let runningFixed = 0;
+                sortedMonths.forEach(m => {
+                    if (m <= currentMonth) {
+                        runningIncome += (monthlyPlans[m].income || 0);
+                        runningFixed += (monthlyPlans[m].fixed || 0);
+                    }
+                });
+                // その日までの累計支出
+                let runningDailyExpense = 0;
+                dates.forEach(date => {
+                    if (date <= d) {
+                        runningDailyExpense += dailyExpenses[date].reduce((sum, e) => sum + parseInt(e.amount), 0);
+                    }
+                });
+                return runningIncome - runningFixed - runningDailyExpense;
             });
-            myChart = new Chart(ctx, { type: 'line', data: { labels: dates, datasets: [{ label: '累計支出推移', data, borderColor: '#ff5252' }] }, options: { responsive: true, maintainAspectRatio: false } });
+            
+            myChart = new Chart(ctx, { 
+                type: 'line', 
+                data: { labels: dates, datasets: [{ label: '総資産推移', data, borderColor: '#2196f3', backgroundColor: 'rgba(33, 150, 243, 0.1)', fill: true }] }, 
+                options: { responsive: true, maintainAspectRatio: false } 
+            });
         }
 
         function saveAll() {
